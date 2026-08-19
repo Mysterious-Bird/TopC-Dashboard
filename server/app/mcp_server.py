@@ -3,8 +3,6 @@
 端点：/api/mcp（streamable HTTP，stateless + JSON 响应）
 鉴权：Authorization: Bearer topc_xxx（管理页创建，或管理员 token）
 """
-import os
-
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import select
@@ -18,36 +16,9 @@ from .scheduler import check_and_send_reminders
 from .schemas import ContestIn, ContestOut, MemberIn, MemberOut, RoleIn, RoleOut
 
 
-def _split_csv(value: str) -> list[str]:
-    return [x.strip() for x in value.split(',') if x.strip()]
-
-
 def _transport_security() -> TransportSecuritySettings:
-    """放行反代后的 Host（公网 IP / 域名），否则 MCP 会 421 Invalid Host header。"""
-    hosts = _split_csv(
-        os.getenv('MCP_ALLOWED_HOSTS', '127.0.0.1,localhost,124.222.172.245')
-    )
-    allowed_hosts: list[str] = []
-    for h in hosts:
-        allowed_hosts.append(h)
-        if ':' not in h:
-            allowed_hosts.append(f'{h}:*')
-    origins = _split_csv(
-        os.getenv(
-            'MCP_ALLOWED_ORIGINS',
-            'http://127.0.0.1,http://localhost,http://124.222.172.245',
-        )
-    )
-    allowed_origins: list[str] = []
-    for o in origins:
-        allowed_origins.append(o)
-        if not o.rsplit(':', 1)[-1].isdigit():
-            allowed_origins.append(f'{o}:*')
-    return TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_hosts=allowed_hosts,
-        allowed_origins=allowed_origins,
-    )
+    """公网反代 + Cursor 会带非 http Origin；已有 API Key 鉴权，关闭 DNS 重绑定防护。"""
+    return TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 
 mcp = FastMCP(
