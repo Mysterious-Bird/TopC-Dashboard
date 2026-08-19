@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+*.tsbuildinfo
+
+# env & secrets
+.env
+.env.local
+server/.env
+
+# local database
+server/topc.db
+server/*.db
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
