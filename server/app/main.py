@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -30,9 +31,13 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title='TopC 社团看板 API', version='0.2.0', lifespan=lifespan)
 
+_cors = os.getenv(
+    'CORS_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080',
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173'],
+    allow_origins=[o.strip() for o in _cors.split(',') if o.strip()],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],

@@ -131,18 +131,75 @@ TopC-Dashboard/
 └── package.json
 ```
 
-## 构建部署
+## Docker 部署（推荐）
+
+前端构建进 Nginx 镜像，后端跑 Uvicorn，Nginx 同域反代 `/api`。本地和服务器用同一套 `docker compose`。
+
+### 本机先打通
+
+需安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)。
 
 ```bash
-# 前端静态资源
-npm run build        # 输出 dist/
+cp .env.example .env          # Windows: copy .env.example .env
+# 编辑 .env：至少改 ADMIN_PASSWORD / SECRET_KEY
 
-# 后端生产启动
-cd server
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+docker compose up -d --build
 ```
 
-生产环境建议：Nginx 托管 `dist/` 并反代 `/api` 与 `/api/mcp/` 到 Uvicorn，MySQL 作为数据库，配置 SMTP 与强密码。
+打开 **http://localhost:8080**
+
+| 项 | 地址 |
+|----|------|
+| 网站 | http://localhost:8080 |
+| API 健康检查 | http://localhost:8080/api/health |
+| MCP | http://localhost:8080/api/mcp/ |
+
+默认 SQLite 数据在 named volume `topc-data` 里。不要执行 `seed.py`（那是演示数据）；空库首次启动会自动建表。
+
+常用命令：
+
+```bash
+docker compose logs -f api     # 看后端日志
+docker compose down            # 停止（保留数据卷）
+docker compose down -v         # 停止并清空数据库
+```
+
+### 部署到服务器
+
+1. 把仓库拷到服务器（git clone 或 `docker save` 后传镜像均可）
+2. 写生产 `.env`：强密码、`SECRET_KEY`、SMTP；对外端口可设 `WEB_PORT=80`
+3. `docker compose up -d --build`
+4. 域名 + HTTPS：在宿主机再用一层 Nginx / Caddy 反代到 `127.0.0.1:8080`（或 80），并申请证书
+
+MCP 生产端点：`https://你的域名/api/mcp/`
+
+### 无域名、用服务器 IP + 宿主机 MySQL
+
+1. 把本仓库（含 `docker/`）推到 GitHub 后，SSH 登录服务器。
+2. 安装 Docker，克隆仓库，在项目根目录创建 `.env`（不要提交到 Git）：
+
+```env
+WEB_PORT=80
+ADMIN_PASSWORD=请改成强密码
+SECRET_KEY=请改成一长串随机字符
+DATABASE_URL=mysql+pymysql://用户名:密码@host.docker.internal:3306/topc_dashboard?charset=utf8mb4
+CORS_ORIGINS=http://你的公网IP
+```
+
+用户名若与库名相同则填 `topc_dashboard`，否则改成宝塔里显示的用户名（常见为 `root`）。
+3. 确认 MySQL 允许 Docker 网段连接（用户 Host 为 `%` 或 `172.%`），且 `bind-address` 不是只绑 `127.0.0.1`。
+4. 云安全组放行 **80**，**不要**把 3306 对公网开放。
+5. `docker compose up -d --build`，浏览器打开 `http://公网IP`。
+
+### 使用 MySQL
+
+在 `.env` 里设置：
+
+```env
+DATABASE_URL=mysql+pymysql://用户:密码@mysql主机:3306/topc?charset=utf8mb4
+```
+
+然后自行提供可达的 MySQL（本机、云 RDS 或另开容器）。不设则继续用 SQLite。
 
 ## License
 

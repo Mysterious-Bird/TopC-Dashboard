@@ -9,6 +9,7 @@ dist/
 .env
 .env.local
 server/.env
+!.env.example
 
 # local database
 server/topc.db
