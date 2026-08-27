@@ -30,3 +30,6 @@ Thumbs.db
 
 # logs
 *.log
+
+# scratch scripts / data dumps (may contain API keys or member PII)
+tmp_*

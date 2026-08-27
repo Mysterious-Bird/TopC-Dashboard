@@ -61,7 +61,7 @@ def get_member(member_id: int) -> MemberOut:
 
 @mcp.tool()
 def create_member(data: MemberIn) -> MemberOut:
-    """新增成员。roles 为职位名列表（可多个，不存在会自动创建）。"""
+    """新增成员。roles 为职位名列表；enroll_year=入学年份（年级按每年 9/1 自动推算）。"""
     with SessionLocal() as db:
         m = Member()
         db.add(m)

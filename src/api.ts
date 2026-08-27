@@ -1,4 +1,5 @@
 import type { Contest, Member, RoleDef } from './data/mock'
+import { gradeFromEnrollYear } from './data/grade'
 import { getToken, notifyUnauthorized } from './auth'
 
 /* 后端返回结构 → 前端结构（snake_case → camelCase，数字 id → string） */
@@ -11,6 +12,7 @@ interface ApiMember {
   qq: string
   email: string
   roles: string[]
+  enroll_year: number | null
   grade: string
   major: string
   student_id: string
@@ -68,7 +70,8 @@ const mapMember = (m: ApiMember): Member => ({
   qq: m.qq,
   email: m.email,
   roles: m.roles,
-  grade: m.grade,
+  enrollYear: m.enroll_year ?? null,
+  grade: m.grade || gradeFromEnrollYear(m.enroll_year),
   major: m.major,
   studentId: m.student_id,
   tags: m.tags,
@@ -95,7 +98,7 @@ const mapContest = (c: ApiContest): Contest => ({
   level: c.level,
   start: c.start,
   end: c.end,
-  registerBy: c.register_by ?? c.start,
+  registerBy: c.register_by ?? '',
   location: c.location,
   teamSize: c.team_size,
   participantIds: c.participant_ids.map(String),
@@ -125,7 +128,7 @@ const toApiMember = (m: Partial<Member>) => ({
   qq: m.qq ?? '',
   email: m.email ?? '',
   roles: m.roles ?? [],
-  grade: m.grade ?? '',
+  enroll_year: m.enrollYear ?? null,
   major: m.major ?? '',
   student_id: m.studentId ?? '',
   tags: m.tags ?? [],

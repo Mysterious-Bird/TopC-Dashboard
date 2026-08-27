@@ -29,6 +29,22 @@ export async function apiLogin(password: string): Promise<void> {
   setToken(token)
 }
 
+/** 退出：作废服务端当前会话，不影响其他管理员 */
+export async function apiLogout(): Promise<void> {
+  const token = getToken()
+  if (token) {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    } catch {
+      /* 网络失败仍清本地态 */
+    }
+  }
+  setToken(null)
+}
+
 /** token 被后端拒绝（401）时广播，DataContext 监听后自动退回访客态 */
 export function notifyUnauthorized() {
   setToken(null)

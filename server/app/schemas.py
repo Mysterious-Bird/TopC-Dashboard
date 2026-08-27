@@ -28,7 +28,7 @@ class MemberIn(BaseModel):
     qq: str = ''
     email: str = ''
     roles: list[str] = Field(default_factory=list)  # 职位名列表（可多个）
-    grade: str = ''
+    enroll_year: int | None = None  # 入学年份；年级由服务端按 9/1 推算
     major: str = ''
     student_id: str = ''
     tags: list[str] = Field(default_factory=list)
@@ -40,9 +40,12 @@ class MemberOut(MemberIn):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    grade: str = ''  # 只读：由 enroll_year 推算
 
     @classmethod
     def from_orm_row(cls, m):
+        from .grade import grade_from_enroll_year
+
         roles = sorted((mr.role for mr in m.member_roles), key=lambda r: (r.sort, r.id))
         return cls(
             id=m.id,
@@ -52,7 +55,8 @@ class MemberOut(MemberIn):
             qq=m.qq,
             email=m.email,
             roles=[r.name for r in roles],
-            grade=m.grade,
+            enroll_year=m.enroll_year,
+            grade=grade_from_enroll_year(m.enroll_year),
             major=m.major,
             student_id=m.student_id,
             tags=_split_csv(m.tags),
@@ -104,7 +108,7 @@ class ContestIn(BaseModel):
     reminder_days: list[int] = Field(default_factory=lambda: [7, 1])
     is_team: bool = False
     remind_enabled: bool = True
-    remind_recipient_ids: list[int] = Field(default_factory=list)  # 空 = 默认（全体成员+社长）
+    remind_recipient_ids: list[int] = Field(default_factory=list)  # 空 = 默认（本场参赛者+社长）；赛前/事项/报名催办共用
     participant_ids: list[int] = Field(default_factory=list)  # 个人赛用
     teams: list[TeamIn] = Field(default_factory=list)  # 团队赛用
     milestones: list[MilestoneIn] = Field(default_factory=list)  # 固定日期事项提醒

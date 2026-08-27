@@ -1,6 +1,5 @@
 """MCP API Key 管理：管理员增删改查 + MCP 请求的 Key 鉴权。"""
 import hashlib
-import hmac
 import secrets
 from datetime import datetime
 
@@ -11,7 +10,7 @@ from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from .auth import TOKEN, require_admin
+from .auth import require_admin, verify_admin_token
 from .db import SessionLocal, get_db
 from .models import ApiKey
 
@@ -27,13 +26,13 @@ def hash_api_key(key: str) -> str:
 
 
 def authenticate_token(token: str) -> bool:
-    """校验 MCP Bearer token：管理员 token 或启用中的 API Key。通过时刷新 last_used_at。"""
+    """校验 MCP Bearer token：管理员 session 或启用中的 API Key。通过时刷新 last_used_at。"""
     if not token:
         return False
-    if hmac.compare_digest(token, TOKEN):
-        return True
     db = SessionLocal()
     try:
+        if verify_admin_token(token, db):
+            return True
         k = db.scalar(select(ApiKey).where(ApiKey.key_hash == hash_api_key(token)))
         if not k or not k.enabled:
             return False

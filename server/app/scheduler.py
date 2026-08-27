@@ -1,6 +1,7 @@
 import logging
 import os
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select
@@ -13,7 +14,12 @@ from .models import Contest, ContestParticipant, Member, MemberRole, ReminderLog
 log = logging.getLogger('topc.scheduler')
 
 INTERVAL_MINUTES = int(os.getenv('REMINDER_INTERVAL_MINUTES', '30'))
-REGISTER_REMIND_DAYS = 3  # 报名截止前 N 天催办管理层
+REGISTER_REMIND_DAYS = 3  # 报名截止前 N 天催办
+CN_TZ = ZoneInfo('Asia/Shanghai')
+
+
+def _china_today() -> date:
+    return datetime.now(CN_TZ).date()
 
 
 def _already_sent(db, contest_id: int, days_before: int, kind: str, milestone_id: int = 0) -> bool:
@@ -29,21 +35,10 @@ def _already_sent(db, contest_id: int, days_before: int, kind: str, milestone_id
     )
 
 
-def _manager_emails(db) -> list[str]:
-    """管理层（社长/副社长）邮箱：按职位名查，未来改职位体系时只需保持命名。"""
-    rows = db.scalars(
-        select(Member.email)
-        .join(MemberRole, MemberRole.member_id == Member.id)
-        .join(Role, Role.id == MemberRole.role_id)
-        .where(Role.name.in_(['社长', '副社长']))
-    ).all()
-    return [e for e in rows if e]
-
-
 def _race_recipients(db, c: Contest) -> tuple[list[str], int]:
-    """赛前/事项提醒收件人：自定义名单 > 默认（该比赛参赛者 + 社长）。
+    """提醒收件人：自定义名单 > 默认（该比赛参赛者 + 社长）。
 
-    返回 (有效邮箱列表, 因无邮箱被跳过的人数)。
+    赛前 / 固定事项 / 报名催办共用。返回 (有效邮箱列表, 因无邮箱被跳过的人数)。
     """
     custom = [int(x) for x in c.remind_recipients.split(',') if x.strip().isdigit()]
     if custom:
@@ -75,8 +70,8 @@ def _race_recipients(db, c: Contest) -> tuple[list[str], int]:
 
 
 def check_and_send_reminders() -> None:
-    """扫描：赛前节点提醒参赛者；固定日期事项提醒；报名截止前催办管理层。"""
-    today = date.today()
+    """扫描：赛前节点提醒；固定日期事项提醒；报名截止前催办。"""
+    today = _china_today()
     with SessionLocal() as db:
         # 赛前提醒只看未开赛；事项提醒覆盖进行中（长期赛），故取 end >= today
         contests = db.scalars(
@@ -87,7 +82,6 @@ def check_and_send_reminders() -> None:
             if days_left < 0:
                 days_left = 0
             # 窗口规则：节点按天数降序，每个节点只负责 (下一节点, 本节点] 这个区间
-            # 例如节点 [7,3,1]：7 管 4~7 天、3 管 2~3 天、1 管 0~1 天，每窗最多发一封
             nodes = sorted((int(x) for x in c.reminder_days.split(',') if x.strip().isdigit()), reverse=True)
             hit = None
             if c.start >= today:
@@ -144,15 +138,15 @@ def check_and_send_reminders() -> None:
                             db.commit()
                             log.info('[事项] %s · %s 已%s -> %d 人（跳过 %d 人无邮箱）', c.short, m.title, '发送' if real else '模拟记录', len(recipients), skipped)
 
-            # 报名催办：截止日前 (0, REGISTER_REMIND_DAYS] 窗口内给管理层发一封
+            # 报名催办：截止日前 [0, REGISTER_REMIND_DAYS] 窗口；收件人与赛前提醒相同（默认参赛者+社长）
             if c.register_by and c.register_by >= today:
                 reg_left = (c.register_by - today).days
                 if 0 <= reg_left <= REGISTER_REMIND_DAYS and not _already_sent(db, c.id, REGISTER_REMIND_DAYS, 'register'):
-                    recipients = _manager_emails(db)
+                    recipients, skipped = _race_recipients(db, c)
                     if recipients:
                         subject = f'[TopC] 报名催办：{c.name} 报名还剩 {reg_left} 天截止'
                         body = (
-                            f'社长/副社长：\n\n'
+                            f'各位同学：\n\n'
                             f'比赛：{c.name}\n'
                             f'报名截止：{c.register_by}（还剩 {reg_left} 天）\n'
                             f'开赛时间：{c.start}\n\n'
@@ -163,11 +157,11 @@ def check_and_send_reminders() -> None:
                         db.add(
                             ReminderLog(
                                 contest_id=c.id, days_before=REGISTER_REMIND_DAYS, kind='register',
-                                recipients=','.join(recipients), mocked=0 if real else 1,
+                                recipients=','.join(recipients), mocked=0 if real else 1, skipped=skipped,
                             )
                         )
                         db.commit()
-                        log.info('[催办] %s 报名剩 %d 天已%s -> %d 人', c.short, reg_left, '发送' if real else '模拟记录', len(recipients))
+                        log.info('[催办] %s 报名剩 %d 天已%s -> %d 人（跳过 %d 人无邮箱）', c.short, reg_left, '发送' if real else '模拟记录', len(recipients), skipped)
 
 
 def start_scheduler() -> BackgroundScheduler:

@@ -25,13 +25,19 @@ type GroupSel = { kind: 'role' | 'contest'; key: string } | null
 
 export default function GraphPage() {
   const fgRef = useRef<ForceGraphMethods>()
+  const wrapRef = useRef<HTMLDivElement>(null)
   const [showRole, setShowRole] = useState(true)
   const [showContest, setShowContest] = useState(true)
   const { members, contests, roles, roleLinks, memberById } = useData()
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
   const [groupSel, setGroupSel] = useState<GroupSel>(null)
-  const fittedOnce = useRef(false)
+  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 })
+  const nodePositionsRef = useRef(new Map<string, { x?: number; y?: number; fx?: number; fy?: number }>())
+
+  useEffect(() => {
+    return () => nodePositionsRef.current.clear()
+  }, [])
 
   // 分组高亮：选中职位/比赛后，组内成员保持高亮，其余淡出
   const groupMembers = useMemo(() => {
@@ -80,7 +86,26 @@ export default function GraphPage() {
       deg.set(l.source, (deg.get(l.source) ?? 0) + 1)
       deg.set(l.target, (deg.get(l.target) ?? 0) + 1)
     })
-    return members.map((m) => ({ id: m.id, member: m, degree: deg.get(m.id) ?? 0 }))
+    const n = members.length
+    // 环形初值，落在默认视口中心附近，避免从屏幕外飞入
+    const radius = n <= 1 ? 0 : 50 + Math.sqrt(n) * 32
+    return members.map((m, i) => {
+      const angle = (2 * Math.PI * i) / Math.max(n, 1) - Math.PI / 2
+      const saved = nodePositionsRef.current.get(m.id)
+      const base = {
+        id: m.id,
+        member: m,
+        degree: deg.get(m.id) ?? 0,
+      }
+      if (saved?.x != null && saved?.y != null && isFinite(saved.x) && isFinite(saved.y)) {
+        return { ...base, x: saved.x, y: saved.y, fx: saved.fx, fy: saved.fy }
+      }
+      return {
+        ...base,
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+      }
+    })
   }, [links, members])
 
   // 关键：graphData 对象必须保持引用稳定。
@@ -88,18 +113,65 @@ export default function GraphPage() {
   // 若内联传新对象，任何重渲染（如悬停）都会让全图重新模拟、节点乱跳。
   const graphData = useMemo(() => ({ nodes, links }), [nodes, links])
 
-  // 力场调参：强斥力 + 大碰撞半径（连标签的空间一起占住）
-  useEffect(() => {
+  /** 适应视图；缩放加上限，防止包围盒过小时 zoomToFit 把节点拉到失真 */
+  const fitView = useCallback((ms = 0) => {
     const fg = fgRef.current
+    const { w, h } = canvasSize
+    if (!fg || members.length === 0 || w < 40 || h < 40) return
+    fg.zoomToFit(ms, 48)
+    const z = fg.zoom()
+    if (z > 2.5) fg.zoom(2.5, ms)
+    const zNow = fg.zoom()
+    const c = fg.centerAt()
+    fg.centerAt(c.x + 28 / zNow, c.y + 18 / zNow, ms)
+  }, [canvasSize.w, canvasSize.h, members.length])
+
+  // 力场调参：强斥力 + 碰撞半径（给标签留空）。
+  // 必须在图实例挂载的 callback ref 里应用——图是条件渲染的（等容器尺寸），
+  // 若改用 effect + fgRef 读取，SPA 导航时 effect 首次执行于挂载前，之后
+  // links 引用稳定不再重跑，调参会静默丢失，力场退回 d3 默认值、布局挤作一团。
+  const initForces = useCallback((fg: ForceGraphMethods | undefined) => {
+    fgRef.current = fg
     if (!fg) return
     fg.d3Force('charge')?.strength(-700)
     ;(fg.d3Force('link') as any)?.distance((l: any) => (l.kind === 'role' ? 115 : 160))
-    // 碰撞半径按“节点 + 姓名牌宽度”占位：3 字名约 34px，半径取 38 起步
     fg.d3Force(
       'collide',
-      forceCollide((n: any) => 38 + Math.min((n as GNode).degree, 8) * 1.6).strength(1),
+      forceCollide((n: any) => 26 + Math.min((n as GNode).degree, 8) * 1.2).strength(1),
     )
-  }, [links])
+  }, [])
+
+  // 数据就绪后按包围盒适配一次视图（warmup 在挂载后约两帧完成）。
+  // 不做的话只能落到 force-graph 内置的固定缩放 4/cbrt(n)，与节点分布无关。
+  const didAutoFit = useRef(false)
+  useEffect(() => {
+    if (didAutoFit.current) return
+    if (canvasSize.w < 40 || canvasSize.h < 40 || nodes.length === 0) return
+    didAutoFit.current = true
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => fitView(0))
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+    }
+  }, [canvasSize.w, canvasSize.h, nodes.length, fitView])
+
+  // 按容器真实尺寸驱动画布
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const apply = () => {
+      const w = Math.max(0, Math.floor(el.clientWidth))
+      const h = Math.max(0, Math.floor(el.clientHeight))
+      setCanvasSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }))
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const neighbors = useMemo(() => {
     const map = new Map<string, Set<string>>()
@@ -125,29 +197,30 @@ export default function GraphPage() {
       const n = node as GNode
       if (n.x == null || n.y == null || !isFinite(n.x) || !isFinite(n.y)) return
       const m = n.member
+      const k = Math.max(globalScale, 0.08)
       const dim = isDim(n.id)
       const isAnchor = (hoverId ?? focusId) === n.id
       const inGroup = groupMembers?.has(n.id) ?? false
-      const r = 3.2 + Math.min(n.degree, 8) * 0.55 + (isAnchor ? 1.4 : 0) + (inGroup && !dim ? 0.8 : 0)
+      const r = 2 + Math.min(n.degree, 8) * 0.35 + (isAnchor ? 0.7 : 0) + (inGroup && !dim ? 0.4 : 0)
 
       ctx.save()
       ctx.globalAlpha = dim ? 0.18 : 1
 
-      // glow
-      const grad = ctx.createRadialGradient(n.x!, n.y!, r * 0.4, n.x!, n.y!, r * 2.6)
-      grad.addColorStop(0, m.color + '55')
+      const glowR = r * 1.25
+      const grad = ctx.createRadialGradient(n.x!, n.y!, r * 0.3, n.x!, n.y!, glowR)
+      grad.addColorStop(0, m.color + '40')
       grad.addColorStop(1, 'transparent')
       ctx.fillStyle = grad
       ctx.beginPath()
-      ctx.arc(n.x!, n.y!, r * 2.6, 0, Math.PI * 2)
+      ctx.arc(n.x!, n.y!, glowR, 0, Math.PI * 2)
       ctx.fill()
 
       // body
       ctx.beginPath()
       ctx.arc(n.x!, n.y!, r, 0, Math.PI * 2)
-      ctx.fillStyle = m.color + '26'
+      ctx.fillStyle = m.color + '22'
       ctx.fill()
-      ctx.lineWidth = isAnchor ? 2.2 : inGroup && !dim ? 1.8 : 1.2
+      ctx.lineWidth = (isAnchor ? 1.4 : inGroup && !dim ? 1.2 : 0.8) / k
       ctx.strokeStyle = m.color
       ctx.stroke()
 
@@ -157,19 +230,19 @@ export default function GraphPage() {
       ctx.fillStyle = m.color
       ctx.fill()
 
-      // label：带底板的姓名牌，缩小时隐藏次要标签
-      const showLabel = globalScale > 0.85 || isAnchor || (!dim && (hoverId ?? focusId) != null)
+      // label：屏幕像素恒定字号，避免缩放后圈/字比例失调
+      const showLabel = k > 0.85 || isAnchor || (!dim && hoverId != null)
       if (showLabel) {
-        const fontSize = Math.max(10 / globalScale, 3)
+        const fontSize = 8 / k
         ctx.font = `${isAnchor ? 600 : 400} ${fontSize}px "Noto Sans SC", sans-serif`
         const tw = ctx.measureText(m.name).width
-        const padX = 3.5 / globalScale + 2
-        const padY = 1.5 / globalScale + 1
+        const padX = 3.5 / k + 2
+        const padY = 1.5 / k + 1
         const lx = n.x! - tw / 2 - padX
         const ly = n.y! + r + 2
         ctx.fillStyle = dim ? 'rgba(7,11,18,0.35)' : 'rgba(7,11,18,0.78)'
         ctx.beginPath()
-        ctx.roundRect(lx, ly, tw + padX * 2, fontSize + padY * 2, 3 / globalScale + 2)
+        ctx.roundRect(lx, ly, tw + padX * 2, fontSize + padY * 2, 3 / k + 2)
         ctx.fill()
         ctx.textAlign = 'center'
         ctx.textBaseline = 'top'
@@ -182,12 +255,27 @@ export default function GraphPage() {
     [isDim, hoverId, focusId, groupMembers],
   )
 
+  const paintNodePointerArea = useCallback(
+    (node: any, color: string, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      const n = node as GNode
+      if (n.x == null || n.y == null || !isFinite(n.x) || !isFinite(n.y)) return
+      const k = Math.max(globalScale, 0.08)
+      const r = 2 + Math.min(n.degree, 8) * 0.35 + 8 / k
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
+      ctx.fill()
+    },
+    [],
+  )
+
   const paintLink = useCallback(
-    (link: any, ctx: CanvasRenderingContext2D) => {
+    (link: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const l = link as GLink & { source: GNode; target: GNode }
       const s = l.source as any
       const t = l.target as any
       if (s.x == null || t.x == null || !isFinite(s.x) || !isFinite(t.x)) return
+      const k = Math.max(globalScale, 0.08)
       const anchor = hoverId ?? focusId
       let active: boolean
       let dim: boolean
@@ -209,7 +297,7 @@ export default function GraphPage() {
       ctx.save()
       ctx.globalAlpha = dim ? 0.06 : active ? 0.95 : l.kind === 'role' ? 0.28 : 0.32
       ctx.strokeStyle = l.kind === 'role' ? '#a78bfa' : '#22d3ee'
-      ctx.lineWidth = active ? 1.6 : 0.8
+      ctx.lineWidth = (active ? 1.6 : 0.8) / k
       if (l.kind === 'contest') ctx.setLineDash([3, 4])
       ctx.beginPath()
       ctx.moveTo(s.x, s.y)
@@ -224,14 +312,14 @@ export default function GraphPage() {
   const focusContests = focusId ? contests.filter((c) => c.participantIds.includes(focusId)) : []
 
   return (
-    <div className="mx-auto flex h-full max-w-[1400px] flex-col px-6 py-6">
+    <div className="mx-auto flex h-full min-h-0 max-w-[1400px] flex-col px-4 py-4 sm:px-6 sm:py-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageTitle title="人物关系图谱" />
         <div className="flex items-center gap-2">
           <Toggle on={showRole} onClick={() => setShowRole(!showRole)} color="#a78bfa" label="职务关系" />
           <Toggle on={showContest} onClick={() => setShowContest(!showContest)} color="#22d3ee" label="同队队友" />
           <button
-            onClick={() => fgRef.current?.zoomToFit(600, 60)}
+            onClick={() => fitView(400)}
             className="rounded-lg border border-edge px-3 py-1.5 text-[13.5px] text-ink-2 transition hover:bg-panel-2 hover:text-ink"
           >
             适应视图
@@ -239,22 +327,30 @@ export default function GraphPage() {
         </div>
       </div>
 
-      <div className="mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-4">
-        <div className="graph-wrap panel relative min-h-[480px] overflow-hidden xl:col-span-3">
+      {/* xl 下用 minmax(0,1fr) 钉住行高，否则右列内容会把行撑高、图区溢出视口 */}
+      <div className="mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-4 xl:grid-rows-[minmax(0,1fr)]">
+        <div
+          ref={wrapRef}
+          className="graph-wrap panel relative min-h-[320px] w-full overflow-hidden sm:min-h-[480px] xl:col-span-3 xl:min-h-0 xl:h-full"
+        >
+          {canvasSize.w > 0 && canvasSize.h > 0 && (
           <ForceGraph2D
-            ref={fgRef as any}
+            ref={initForces as any}
+            width={canvasSize.w}
+            height={canvasSize.h}
             graphData={graphData as any}
             backgroundColor="rgba(0,0,0,0)"
             nodeCanvasObject={paintNode}
+            nodeCanvasObjectMode={() => 'replace'}
+            nodePointerAreaPaint={paintNodePointerArea}
             linkCanvasObject={paintLink}
             linkCanvasObjectMode={() => 'replace'}
-            nodeRelSize={6}
+            nodeRelSize={1}
             enableNodeDrag
             onNodeHover={(n: any) => setHoverId(n?.id ?? null)}
             onNodeClick={(n: any) => setFocusId(n.id === focusId ? null : n.id)}
             onBackgroundClick={() => setFocusId(null)}
             onNodeDragEnd={(n: any) => {
-              // 拖拽后钉住节点（Obsidian 行为），双击可解锁
               n.fx = n.x
               n.fy = n.y
             }}
@@ -267,12 +363,19 @@ export default function GraphPage() {
             d3AlphaDecay={0.04}
             d3VelocityDecay={0.35}
             onEngineStop={() => {
-              if (!fittedOnce.current) {
-                fittedOnce.current = true
-                fgRef.current?.zoomToFit(500, 70)
-              }
+              graphData.nodes.forEach((n) => {
+                if (n.x != null && n.y != null) {
+                  nodePositionsRef.current.set(n.id, {
+                    x: n.x,
+                    y: n.y,
+                    fx: (n as any).fx,
+                    fy: (n as any).fy,
+                  })
+                }
+              })
             }}
           />
+          )}
           <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-1.5 rounded-lg border border-edge bg-abyss/70 px-3 py-2.5 backdrop-blur">
             <div className="tag-chip text-ink-3">LEGEND</div>
             <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
@@ -284,7 +387,7 @@ export default function GraphPage() {
           </div>
         </div>
 
-        <div className="flex max-h-full min-h-0 flex-col gap-4">
+        <div className="flex max-h-full min-h-0 flex-col gap-4 overflow-hidden">
         {/* group highlight */}
         <Panel className="grid-tex shrink-0 overflow-y-auto p-4" >
           <div className="flex items-center justify-between">
@@ -344,7 +447,7 @@ export default function GraphPage() {
         </Panel>
 
         {/* focus panel */}
-        <Panel className="grid-tex h-fit max-h-full overflow-y-auto p-5">
+        <Panel className="grid-tex min-h-0 flex-1 overflow-y-auto p-5">
           {focus ? (
             <>
               <div className="flex items-center gap-3">

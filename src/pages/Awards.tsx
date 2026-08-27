@@ -1,16 +1,32 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { useData } from '../data/DataContext'
 import { CountUp } from '../components/fx'
 import { inputCls } from '../components/Modal'
-import { TIER_META, RANK_ICON, QUOTES, tierOf, rankOf, type Award, type Tier } from '../data/awards'
+import {
+  TIER_META,
+  RANK_ICON,
+  QUOTES,
+  tierOf,
+  rankOf,
+  compareImportance,
+  bestAwardPerContest,
+  type Award,
+  type Tier,
+} from '../data/awards'
 import type { Member } from '../data/mock'
 
 type MemberMap = Map<string, Member>
+
+const NATIONAL_PAGE_SIZE = 6
+const WALL_PAGE_SIZE = 9
 
 export default function Awards() {
   const { contests, memberById } = useData()
   const tlRef = useRef<HTMLDivElement>(null)
   const tlScroll = (dir: 1 | -1) => tlRef.current?.scrollBy({ left: dir * 474, behavior: 'smooth' })
+  const [nationalPage, setNationalPage] = useState(0)
+  const [wallPage, setWallPage] = useState(0)
 
   const awards: Award[] = useMemo(() => {
     const out: Award[] = []
@@ -23,7 +39,8 @@ export default function Awards() {
           contest: c.name,
           contestId: c.id,
           date: c.end.slice(0, 7),
-          tier: tierOf(`${r.award} ${c.name}`),
+          dateFull: c.end,
+          tier: tierOf(r.award, c.name),
           memberIds: r.memberIds,
           team,
           rank: rankOf(r.award),
@@ -39,20 +56,51 @@ export default function Awards() {
     return map
   }, [awards, memberById])
 
+  /** 编年：每场比赛只取最好成绩，再按时间正序 */
+  const timelineAwards = useMemo(
+    () => bestAwardPerContest(awards).sort((a, b) => a.dateFull.localeCompare(b.dateFull) || a.date.localeCompare(b.date)),
+    [awards],
+  )
+
+  /** 国家级：重要程度降序，同程度越新越前 */
+  const nationals = useMemo(
+    () => awards.filter((a) => a.tier === 'national').sort(compareImportance),
+    [awards],
+  )
+
+  /** 荣誉墙：省级 > 市级 > 校级，同级名次更好优先，再新优先 */
+  const wallAwards = useMemo(
+    () => awards.filter((a) => a.tier !== 'national').sort(compareImportance),
+    [awards],
+  )
+
+  const nationalPages = Math.max(1, Math.ceil(nationals.length / NATIONAL_PAGE_SIZE))
+  const wallPages = Math.max(1, Math.ceil(wallAwards.length / WALL_PAGE_SIZE))
+  const nationalSlice = nationals.slice(nationalPage * NATIONAL_PAGE_SIZE, (nationalPage + 1) * NATIONAL_PAGE_SIZE)
+  const wallSlice = wallAwards.slice(wallPage * WALL_PAGE_SIZE, (wallPage + 1) * WALL_PAGE_SIZE)
+
+  useEffect(() => {
+    setNationalPage((p) => Math.min(p, Math.max(0, nationalPages - 1)))
+  }, [nationalPages])
+  useEffect(() => {
+    setWallPage((p) => Math.min(p, Math.max(0, wallPages - 1)))
+  }, [wallPages])
+
   useEffect(() => {
     const el = tlRef.current
     if (el) el.scrollLeft = el.scrollWidth
-  }, [awards.length])
+  }, [timelineAwards.length])
 
-  const nationals = awards.filter((a) => a.tier === 'national')
-  const rest = awards.filter((a) => a.tier !== 'national')
   const people = new Set(awards.flatMap((a) => a.memberIds)).size
-  const latestThree = [...awards].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3)
+  const latestThree = useMemo(
+    () => [...awards].sort(compareImportance).slice(0, 3),
+    [awards],
+  )
   const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)])
 
   if (awards.length === 0) {
     return (
-      <div className="mx-auto max-w-[1200px] px-6 py-16 text-center text-ink-3">
+      <div className="mx-auto max-w-[1200px] px-4 py-12 text-center text-ink-3 sm:px-6 sm:py-16">
         <div className="font-display text-2xl">暂无获奖记录</div>
         <p className="mt-2 text-[14px]">比赛录入成绩后，这里会自动生成荣誉殿堂。</p>
       </div>
@@ -60,9 +108,9 @@ export default function Awards() {
   }
 
   return (
-    <div className="awd mx-auto max-w-[1200px] px-6 py-6">
+    <div className="awd mx-auto max-w-[1200px] px-4 py-4 sm:px-6 sm:py-6">
       {/* ---------- HERO ---------- */}
-      <section className="awd-hero panel grid-tex rise-in relative overflow-hidden p-8">
+      <section className="awd-hero panel grid-tex rise-in relative overflow-hidden p-5 sm:p-8">
         <div className="awd-aurora" aria-hidden><i /><i /><i /></div>
         <div className="awd-beams" aria-hidden><i /><i /><i /></div>
         <div className="awd-dust" aria-hidden>
@@ -73,9 +121,9 @@ export default function Awards() {
             <div className="awd-trophy" aria-hidden><TrophySVG /></div>
             <div className="awd-floor-glow" aria-hidden />
           </div>
-          <div className="min-w-[260px] flex-1">
+          <div className="min-w-0 flex-1">
             <div className="tag-chip text-amber">TOPC · HALL OF FAME</div>
-            <h1 className="mt-2 font-display text-[40px] font-bold leading-tight tracking-tight">
+            <h1 className="mt-2 font-display text-[28px] font-bold leading-tight tracking-tight sm:text-[40px]">
               荣誉殿堂
               <span className="awd-hero-sheen ml-3 bg-gradient-to-r from-amber via-[#f5c64f] to-amber bg-clip-text text-transparent">GLORY</span>
             </h1>
@@ -127,14 +175,14 @@ export default function Awards() {
             <span className="awd-hero-sheen bg-gradient-to-r from-amber via-[#ffe9a8] to-amber bg-clip-text font-display text-[17px] font-semibold tracking-wide text-transparent">
               最新荣誉
             </span>
-            <span className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-3">Recent Honors</span>
+            <span className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-3">Top Honors</span>
           </span>
           {latestThree.map((a) => (
             <span key={a.id} className="awd-recent" style={{ ['--tier' as never]: TIER_META[a.tier].color }}>
               <span className="awd-recent-dot" />
-              <b>{a.award}</b>
-              <span className="awd-recent-c">{a.contest}</span>
-              <span className="font-mono text-[11.5px] text-ink-3">{a.date}</span>
+              <b className="shrink-0">{a.award}</b>
+              <Trunc className="awd-recent-c min-w-0">{a.contest}</Trunc>
+              <span className="shrink-0 font-mono text-[11.5px] text-ink-3">{a.date}</span>
             </span>
           ))}
         </div>
@@ -142,8 +190,7 @@ export default function Awards() {
 
       {/* ---------- 荣誉编年 ---------- */}
       <section className="awd-timeline panel grid-tex rise-in relative mt-6 overflow-hidden p-6" style={{ animationDelay: '.15s' }}>
-        <div className="flex items-end justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
             <span
               className="h-[18px] w-1 rounded-full bg-gradient-to-b from-amber to-[#f5c64f]"
               style={{ boxShadow: '0 0 12px rgba(245,198,79,.7)' }}
@@ -152,7 +199,6 @@ export default function Awards() {
               荣誉编年
             </span>
             <span className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.22em] text-ink-3">Glory Timeline</span>
-          </div>
         </div>
         <div className="awd-tl-wrap">
           <button className="awd-tl-edge awd-tl-left" onClick={() => tlScroll(-1)} aria-label="更早">
@@ -160,11 +206,11 @@ export default function Awards() {
           </button>
           <div ref={tlRef} className="awd-tl-track">
             <div className="awd-tl-inner">
-              {[...awards].sort((a, b) => a.date.localeCompare(b.date)).map((a, i) => (
+              {timelineAwards.map((a, i) => (
                 <div key={a.id} className="awd-tl-item" style={{ ['--tier' as never]: TIER_META[a.tier].color, animationDelay: `${0.25 + i * 0.09}s` }}>
                   <div className="awd-tl-date font-mono">{a.date}</div>
-                  <div className="awd-tl-award">{a.award}</div>
-                  <div className="awd-tl-contest">{a.contest}</div>
+                  <Trunc as="div" className="awd-tl-award">{a.award}</Trunc>
+                  <Trunc as="div" className="awd-tl-contest">{a.contest}</Trunc>
                 </div>
               ))}
             </div>
@@ -177,37 +223,82 @@ export default function Awards() {
 
       {/* ---------- 巅峰时刻（国家级） ---------- */}
       <section className="mt-8">
-        <div className="mb-4 flex items-end justify-between">
-          <div>
+        <div className="mb-4">
             <div className="tag-chip text-ink-3">PEAK MOMENTS</div>
             <h2 className="mt-1 font-display text-[20px] font-semibold">巅峰时刻 · 国家级</h2>
-          </div>
-          <span className="text-[12.5px] text-ink-3">熔金旋边 · 金尘浮动 · 扫光</span>
         </div>
         {nationals.length === 0 ? (
           <div className="panel grid-tex p-8 text-center text-[14px] text-ink-3">暂无国家级奖项</div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {nationals.map((a, i) => <AwardCard key={a.id} a={a} members={members} big delay={i} />)}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {nationalSlice.map((a, i) => (
+                <AwardCard key={a.id} a={a} members={members} big delay={i} />
+              ))}
+            </div>
+            <Pager page={nationalPage} pages={nationalPages} onChange={setNationalPage} />
+          </>
         )}
       </section>
 
       {/* ---------- 荣誉墙 ---------- */}
-      {rest.length > 0 && (
+      {wallAwards.length > 0 && (
         <section className="mt-10">
           <div className="mb-4">
-            <div className="tag-chip text-ink-3">WALL OF HONOR</div>
-            <h2 className="mt-1 font-display text-[20px] font-semibold">荣誉墙</h2>
+              <div className="tag-chip text-ink-3">WALL OF HONOR</div>
+              <h2 className="mt-1 font-display text-[20px] font-semibold">荣誉墙</h2>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {rest.map((a, i) => <AwardCard key={a.id} a={a} members={members} delay={i} />)}
+            {wallSlice.map((a, i) => (
+              <AwardCard key={a.id} a={a} members={members} delay={i} />
+            ))}
           </div>
+          <Pager page={wallPage} pages={wallPages} onChange={setWallPage} />
         </section>
       )}
 
       {/* ---------- 荣誉列表 ---------- */}
       <HonorList awards={awards} members={members} />
+    </div>
+  )
+}
+
+function Pager({ page, pages, onChange }: { page: number; pages: number; onChange: (p: number) => void }) {
+  if (pages <= 1) return null
+  return (
+    <div className="mt-5 flex items-center justify-center gap-2">
+      <button
+        type="button"
+        disabled={page <= 0}
+        onClick={() => onChange(page - 1)}
+        className="rounded-lg border border-edge px-3 py-1.5 text-[13px] text-ink-2 transition enabled:hover:bg-panel-2 enabled:hover:text-ink disabled:opacity-35"
+      >
+        上一页
+      </button>
+      <div className="flex items-center gap-1">
+        {Array.from({ length: pages }, (_, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onChange(i)}
+            className={`min-w-8 rounded-lg px-2.5 py-1.5 font-mono text-[13px] transition ${
+              page === i
+                ? 'bg-neon/15 text-neon ring-1 ring-inset ring-neon/40'
+                : 'text-ink-3 hover:bg-panel-2 hover:text-ink'
+            }`}
+          >
+            {i + 1}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        disabled={page >= pages - 1}
+        onClick={() => onChange(page + 1)}
+        className="rounded-lg border border-edge px-3 py-1.5 text-[13px] text-ink-2 transition enabled:hover:bg-panel-2 enabled:hover:text-ink disabled:opacity-35"
+      >
+        下一页
+      </button>
     </div>
   )
 }
@@ -237,25 +328,35 @@ function AwardCard({ a, members, big, delay }: { a: Award; members: MemberMap; b
           <div className="awd-face-front awd-card-in flex flex-col">
             <span className="awd-ghost" aria-hidden>{RANK_ICON[a.rank - 1]}</span>
             <div className="flex items-center gap-2">
-              <span className="awd-tier-tag">{meta.label}</span>
-              {a.team && <span className="awd-team-tag"><TeamIcon />{a.team}</span>}
-              <span className="ml-auto font-mono text-[12px] text-ink-3">{a.date}</span>
+              <span className="awd-tier-tag shrink-0">{meta.label}</span>
+              {a.team && (
+                <span className="awd-team-tag min-w-0">
+                  <TeamIcon />
+                  <Trunc className="min-w-0">{a.team}</Trunc>
+                </span>
+              )}
+              <span className="ml-auto shrink-0 font-mono text-[12px] text-ink-3">{a.date}</span>
             </div>
             <div className={`flex items-center gap-3 ${big ? 'mt-7' : 'mt-5'}`}>
-              <span className={big ? 'text-[50px]' : 'text-[36px]'}>{RANK_ICON[a.rank - 1]}</span>
-              <div className="min-w-0">
-                <div className={`awd-award-name font-display font-bold leading-snug ${big ? 'text-[27px]' : 'text-[19px]'}`}>{a.award}</div>
-                <div className={`truncate text-ink-2 ${big ? 'mt-1.5 text-[15px]' : 'mt-1 text-[13.5px]'}`}>{a.contest}</div>
+              <span className={`shrink-0 ${big ? 'text-[50px]' : 'text-[36px]'}`}>{RANK_ICON[a.rank - 1]}</span>
+              <div className="min-w-0 flex-1">
+                <Trunc as="div" className={`awd-award-name font-display font-bold leading-snug ${big ? 'text-[27px]' : 'text-[19px]'}`}>{a.award}</Trunc>
+                <Trunc as="div" className={`text-ink-2 ${big ? 'mt-1.5 text-[15px]' : 'mt-1 text-[13.5px]'}`}>{a.contest}</Trunc>
               </div>
             </div>
           </div>
           <div className="awd-face-back awd-card-in flex flex-col">
             <div className="flex items-center gap-2">
-              <span className="awd-back-eyebrow flex-1 truncate">{a.team ? 'TEAM MEMBERS · 队员' : 'WINNER · 获奖人'}</span>
-              {a.team && <div className="awd-back-team"><TeamIcon /><b>{a.team}</b></div>}
-              <span className={`flex-1 text-right ${big ? 'text-[26px]' : 'text-[22px]'}`}>{RANK_ICON[a.rank - 1]}</span>
+              <span className="awd-back-eyebrow shrink-0">{a.team ? 'TEAM MEMBERS · 队员' : 'WINNER · 获奖人'}</span>
+              {a.team && (
+                <div className="awd-back-team min-w-0">
+                  <TeamIcon />
+                  <Trunc as="b" className="min-w-0">{a.team}</Trunc>
+                </div>
+              )}
+              <span className={`ml-auto shrink-0 ${big ? 'text-[26px]' : 'text-[22px]'}`}>{RANK_ICON[a.rank - 1]}</span>
             </div>
-            <div className={`awd-back-award font-display font-bold ${big ? 'mt-1.5 text-[17px]' : 'mt-1 text-[14px]'}`}>{a.award}</div>
+            <Trunc as="div" className={`awd-back-award font-display font-bold ${big ? 'mt-1.5 text-[17px]' : 'mt-1 text-[14px]'}`}>{a.award}</Trunc>
             <div className="awd-back-winners">
               {a.memberIds.map((id, w) => {
                 const m = members.get(id)
@@ -265,7 +366,7 @@ function AwardCard({ a, members, big, delay }: { a: Award; members: MemberMap; b
             </div>
             <div className="awd-back-foot mt-auto">
               <span className="awd-back-foot-dot" style={{ background: meta.color, boxShadow: `0 0 8px ${meta.color}` }} />
-              {a.contest} · {a.date}
+              <Trunc className="min-w-0">{`${a.contest} · ${a.date}`}</Trunc>
             </div>
           </div>
         </div>
@@ -280,7 +381,7 @@ function HonorList({ awards, members }: { awards: Award[]; members: MemberMap })
   const rows = useMemo(() => {
     const kw = q.trim().toLowerCase()
     return [...awards]
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort((a, b) => b.dateFull.localeCompare(a.dateFull) || compareImportance(a, b))
       .filter((a) => tier === 'all' || a.tier === tier)
       .filter((a) => {
         if (!kw) return true
@@ -300,8 +401,8 @@ function HonorList({ awards, members }: { awards: Award[]; members: MemberMap })
       </div>
       <div className="panel grid-tex p-5">
         <div className="flex flex-wrap items-center gap-3">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索 人名 / 比赛 / 奖项 / 队名…" className={`${inputCls} w-[260px]`} />
-          <div className="flex gap-1.5">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索 人名 / 比赛 / 奖项 / 队名…" className={`${inputCls} w-full max-w-[260px]`} />
+          <div className="flex flex-wrap gap-1.5">
             {(['all', 'national', 'provincial', 'city', 'school'] as const).map((t) => (
               <button key={t} onClick={() => setTier(t)} className={`awd-hf-btn ${tier === t ? 'awd-hf-on' : ''}`} style={t !== 'all' ? { ['--tier' as never]: TIER_META[t].color } : undefined}>
                 {t === 'all' ? '全部' : TIER_META[t].label}
@@ -315,10 +416,10 @@ function HonorList({ awards, members }: { awards: Award[]; members: MemberMap })
         {rows.map((a) => (
           <div key={a.id} className="awd-hr" style={{ ['--tier' as never]: TIER_META[a.tier].color }}>
             <span className="font-mono text-[12.5px] text-ink-3">{a.date}</span>
-            <span className="awd-hr-award">{RANK_ICON[a.rank - 1]} {a.award}</span>
-            <span className="truncate text-ink-2">{a.contest}</span>
-            <span className="truncate text-ink-2">{a.team ?? <span className="text-ink-3">—</span>}</span>
-            <span className="truncate">{a.memberIds.map((id) => members.get(id)?.name).filter(Boolean).join('、')}</span>
+            <Trunc className="awd-hr-award">{`${RANK_ICON[a.rank - 1]} ${a.award}`}</Trunc>
+            <Trunc className="text-ink-2">{a.contest}</Trunc>
+            {a.team ? <Trunc className="text-ink-2">{a.team}</Trunc> : <span className="text-ink-3">—</span>}
+            <Trunc>{a.memberIds.map((id) => members.get(id)?.name).filter(Boolean).join('、')}</Trunc>
             <span className="text-right"><span className="awd-tier-tag">{TIER_META[a.tier].label}</span></span>
           </div>
         ))}
@@ -330,10 +431,59 @@ function HonorList({ awards, members }: { awards: Award[]; members: MemberMap })
 
 function TeamIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3 shrink-0">
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
       <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
+  )
+}
+
+function Trunc({
+  children,
+  className = '',
+  as: Tag = 'span',
+}: {
+  children: string
+  className?: string
+  as?: 'span' | 'div' | 'b'
+}) {
+  const ref = useRef<HTMLElement>(null)
+  const [tip, setTip] = useState<{ x: number; y: number } | null>(null)
+
+  const show = () => {
+    const el = ref.current
+    if (!el || el.scrollWidth <= el.clientWidth + 1) return
+    const r = el.getBoundingClientRect()
+    setTip({ x: r.left + r.width / 2, y: r.top })
+    // 仅正面需要暂时取消翻转，否则背面悬停会把卡片抽回正面
+    if (el.closest('.awd-face-front')) {
+      el.closest('.awd-card')?.classList.add('awd-card-tipping')
+    }
+  }
+
+  const hide = () => {
+    setTip(null)
+    ref.current?.closest('.awd-card')?.classList.remove('awd-card-tipping')
+  }
+
+  return (
+    <>
+      <Tag
+        ref={ref as never}
+        className={`truncate ${className}`}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+      >
+        {children}
+      </Tag>
+      {tip &&
+        createPortal(
+          <div className="awd-float-tip" style={{ left: tip.x, top: tip.y } as CSSProperties} role="tooltip">
+            {children}
+          </div>,
+          document.body,
+        )}
+    </>
   )
 }
 

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CONTESTS, MEMBERS, ROLES, deriveRoleLinks, type Contest, type Member, type RoleDef } from './mock'
 import { fetchLiveData } from '../api'
-import { apiLogin, getToken, setToken } from '../auth'
+import { apiLogin, apiLogout, getToken } from '../auth'
 
 interface DataValue {
   members: Member[]
@@ -20,20 +20,22 @@ const DataContext = createContext<DataValue>(null as unknown as DataValue)
 
 const MOCK_ROLE_LINKS = deriveRoleLinks(MEMBERS, ROLES)
 
+/** 生产环境从空数据起步，避免 API 返回前 / 失败时闪出演示成员（林亦风等）。开发环境仍可用 mock。 */
+const INITIAL = import.meta.env.DEV
+  ? { members: MEMBERS, contests: CONTESTS, roles: ROLES, roleLinks: MOCK_ROLE_LINKS, live: false }
+  : { members: [] as Member[], contests: [] as Contest[], roles: [] as RoleDef[], roleLinks: [] as [string, string][], live: false }
+
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState({
-    members: MEMBERS,
-    contests: CONTESTS,
-    roles: ROLES,
-    roleLinks: MOCK_ROLE_LINKS,
-    live: false,
-  })
+  const [data, setData] = useState(INITIAL)
 
   const load = useCallback(() => {
     fetchLiveData()
       .then((d) => setData({ ...d, live: true }))
       .catch(() => {
-        // API 不可用 → 保持 mock，demo 不受影响
+        // 开发：API 挂了仍看 mock；生产：保持空列表，不再回退演示数据
+        if (import.meta.env.DEV) {
+          setData({ ...INITIAL, live: false })
+        }
       })
   }, [])
 
@@ -53,7 +55,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
-    setToken(null)
+    void apiLogout()
     setAuthed(false)
   }, [])
 

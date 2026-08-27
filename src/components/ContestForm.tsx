@@ -97,7 +97,7 @@ export default function ContestForm({
   return (
     <Modal title={initial ? `编辑比赛 · ${initial.short}` : '添加比赛'} onClose={onClose} wide>
       <form onSubmit={submit}>
-        <div className="grid grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
           <Field label="比赛名称 *" className="col-span-2">
             <input required value={d.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="如 ICPC 亚洲区域赛 · 南京站" />
           </Field>
@@ -218,11 +218,80 @@ export default function ContestForm({
             </Field>
           )}
 
+          <Field label="提醒收件人（赛前 / 固定事项 / 报名催办共用）" className="col-span-2">
+            <div className="rounded-xl border border-edge/70 bg-abyss/30 p-3">
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[12.5px] text-ink-3">快选：</span>
+                <QuickBtn onClick={() => set('remindRecipientIds', members.map((m) => m.id))}>全体成员</QuickBtn>
+                <QuickBtn onClick={() => addRecipients(participants)}>本场比赛参赛者</QuickBtn>
+                <QuickBtn
+                  onClick={() => {
+                    const presidents = members.filter((m) => m.roles.includes('社长')).map((m) => m.id)
+                    set('remindRecipientIds', [...new Set([...participants, ...presidents])])
+                  }}
+                >
+                  默认：参赛者+社长
+                </QuickBtn>
+                <QuickBtn onClick={() => set('remindRecipientIds', [])}>恢复默认</QuickBtn>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const name = e.target.value
+                    if (name) addRecipients(members.filter((m) => m.roles.includes(name)).map((m) => m.id))
+                  }}
+                  className="rounded-full border border-edge bg-panel-2/60 px-2.5 py-1 text-[12px] text-ink-2 focus:border-neon/50 focus:outline-none"
+                >
+                  <option value="">按职位添加…</option>
+                  {roles.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
+                </select>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const c = contests.find((x) => x.id === e.target.value)
+                    if (c) addRecipients(c.participantIds)
+                  }}
+                  className="rounded-full border border-edge bg-panel-2/60 px-2.5 py-1 text-[12px] text-ink-2 focus:border-neon/50 focus:outline-none"
+                >
+                  <option value="">按比赛添加…</option>
+                  {contests.filter((c) => c.id !== d.id).map((c) => <option key={c.id} value={c.id}>{c.short}</option>)}
+                </select>
+              </div>
+              {d.remindRecipientIds.length === 0 ? (
+                <p className="rounded-lg bg-panel-2/60 px-3 py-2 text-[12.5px] text-ink-3">
+                  未指定收件人：默认提醒 <span className="text-neon">本场比赛参赛者 + 社长</span>
+                  {d.registerBy ? '（含报名催办）' : ''}
+                </p>
+              ) : (
+                <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+                  {d.remindRecipientIds.map((id) => {
+                    const m = members.find((x) => x.id === id)
+                    if (!m) return null
+                    return (
+                      <span
+                        key={id}
+                        title={m.email ? m.email : '该成员未填写邮箱，发送时将被跳过'}
+                        className={`flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-[12.5px] ${
+                          m.email
+                            ? 'border-neon/40 bg-neon/10 text-neon'
+                            : 'border-dashed border-amber/50 bg-amber/5 text-amber'
+                        }`}
+                      >
+                        {m.name}
+                        {!m.email && <span className="text-[10px]">无邮箱</span>}
+                        <button type="button" onClick={() => removeRecipient(id)} className="ml-0.5 opacity-60 hover:text-rose">✕</button>
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </Field>
+
           <Field label="赛前提醒" className="col-span-2">
             <div className="rounded-xl border border-edge/70 bg-abyss/30 p-3">
               <div className="flex items-center justify-between">
                 <span className="text-[14px] text-ink-2">
-                  {d.remindEnabled ? '已开启：按提醒节点发送邮件' : '已关闭：本次比赛不发送任何赛前提醒'}
+                  {d.remindEnabled ? '已开启：按提醒节点发送邮件' : '已关闭：本次比赛不发送赛前 / 固定事项提醒（报名催办仍生效）'}
                 </span>
                 <button
                   type="button"
@@ -234,61 +303,19 @@ export default function ContestForm({
               </div>
               {d.remindEnabled && (
                 <div className="mt-3 border-t border-edge/60 pt-3">
-                  <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                    <span className="text-[12.5px] text-ink-3">快选：</span>
-                    <QuickBtn onClick={() => set('remindRecipientIds', members.map((m) => m.id))}>全体成员</QuickBtn>
-                    <QuickBtn onClick={() => addRecipients(participants)}>本场比赛参赛者</QuickBtn>
-                    <QuickBtn onClick={() => set('remindRecipientIds', [])}>恢复默认</QuickBtn>
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        const name = e.target.value
-                        if (name) addRecipients(members.filter((m) => m.roles.includes(name)).map((m) => m.id))
-                      }}
-                      className="rounded-full border border-edge bg-panel-2/60 px-2.5 py-1 text-[12px] text-ink-2 focus:border-neon/50 focus:outline-none"
-                    >
-                      <option value="">按职位添加…</option>
-                      {roles.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
-                    </select>
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        const c = contests.find((x) => x.id === e.target.value)
-                        if (c) addRecipients(c.participantIds)
-                      }}
-                      className="rounded-full border border-edge bg-panel-2/60 px-2.5 py-1 text-[12px] text-ink-2 focus:border-neon/50 focus:outline-none"
-                    >
-                      <option value="">按比赛添加…</option>
-                      {contests.filter((c) => c.id !== d.id).map((c) => <option key={c.id} value={c.id}>{c.short}</option>)}
-                    </select>
-                  </div>
-                  {d.remindRecipientIds.length === 0 ? (
-                    <p className="rounded-lg bg-panel-2/60 px-3 py-2 text-[12.5px] text-ink-3">
-                      未指定收件人：默认提醒 <span className="text-neon">本场比赛参赛者 + 社长</span>
-                    </p>
-                  ) : (
-                    <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
-                  {d.remindRecipientIds.map((id) => {
-                      const m = members.find((x) => x.id === id)
-                      if (!m) return null
-                      return (
-                        <span
-                          key={id}
-                          title={m.email ? m.email : '该成员未填写邮箱，发送时将被跳过'}
-                          className={`flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-[12.5px] ${
-                            m.email
-                              ? 'border-neon/40 bg-neon/10 text-neon'
-                              : 'border-dashed border-amber/50 bg-amber/5 text-amber'
-                          }`}
-                        >
-                          {m.name}
-                          {!m.email && <span className="text-[10px]">无邮箱</span>}
-                          <button type="button" onClick={() => removeRecipient(id)} className="ml-0.5 opacity-60 hover:text-rose">✕</button>
-                        </span>
-                      )
-                    })}
-                    </div>
-                  )}
+                  <label className="mb-1 block text-[12px] text-ink-3">提醒节点（开赛前天数，逗号分隔）</label>
+                  <input
+                    value={d.reminderDays.join(',')}
+                    onChange={(e) => {
+                      const nums = e.target.value
+                        .split(/[,，\s]+/)
+                        .map((x) => Number(x.trim()))
+                        .filter((n) => Number.isFinite(n) && n >= 0)
+                      set('reminderDays', [...new Set(nums)].sort((a, b) => b - a))
+                    }}
+                    placeholder="如：14,7,1"
+                    className={inputCls}
+                  />
                 </div>
               )}
             </div>

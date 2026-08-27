@@ -123,7 +123,8 @@ def _apply_member(db: Session, m: Member, data: MemberIn) -> None:
     m.phone = data.phone
     m.qq = data.qq
     m.email = data.email
-    m.grade = data.grade
+    m.enroll_year = data.enroll_year
+    m.grade = ''  # 遗留列清空，年级只读推算
     m.major = data.major
     m.student_id = data.student_id
     m.tags = ','.join(data.tags)
@@ -283,14 +284,15 @@ def delete_contest(contest_id: int, db: Session = Depends(get_db)):
 
 @api.get('/overview', response_model=OverviewOut)
 def overview(db: Session = Depends(get_db)):
-    today = date.today()
+    from zoneinfo import ZoneInfo
+    today = datetime.now(ZoneInfo('Asia/Shanghai')).date()
     contests = db.scalars(select(Contest)).all()
     return OverviewOut(
         member_count=db.scalar(select(func.count()).select_from(Member)) or 0,
         ongoing_count=sum(1 for c in contests if c.start <= today <= c.end),
         upcoming_count=sum(1 for c in contests if c.start > today),
         done_count=sum(1 for c in contests if c.end < today),
-        server_time=datetime.now().isoformat(timespec='seconds'),
+        server_time=datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(timespec='seconds'),
     )
 
 

@@ -31,7 +31,7 @@ export default function Teams() {
   }, [allContests])
 
   return (
-    <div className="mx-auto max-w-[1200px] px-6 py-6">
+    <div className="mx-auto max-w-[1200px] px-4 py-4 sm:px-6 sm:py-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageTitle title="参赛视图" sub={quote} />
         <div className="flex items-center gap-3">

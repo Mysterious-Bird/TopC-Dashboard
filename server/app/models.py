@@ -48,7 +48,8 @@ class Member(Base):
     phone: Mapped[str] = mapped_column(String(20), default='')
     qq: Mapped[str] = mapped_column(String(20), default='')
     email: Mapped[str] = mapped_column(String(64), default='')
-    grade: Mapped[str] = mapped_column(String(8), default='')
+    enroll_year: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 入学年份；年级按 9/1 推算
+    grade: Mapped[str] = mapped_column(String(8), default='')  # 遗留字段，不再写入
     major: Mapped[str] = mapped_column(String(32), default='')
     student_id: Mapped[str] = mapped_column(String(32), default='')
     tags: Mapped[str] = mapped_column(String(255), default='')  # 逗号分隔
@@ -93,7 +94,7 @@ class Contest(Base):
     reminder_days: Mapped[str] = mapped_column(String(32), default='7,1')  # 逗号分隔的天数节点
     is_team: Mapped[bool] = mapped_column(Boolean, default=False)  # 团队赛才有队伍
     remind_enabled: Mapped[bool] = mapped_column(Boolean, default=True)  # 关闭则不发赛前提醒
-    remind_recipients: Mapped[str] = mapped_column(String(512), default='')  # 自定义收件人 member id CSV；空 = 该比赛参赛者+社长
+    remind_recipients: Mapped[str] = mapped_column(String(512), default='')  # 自定义收件人 member id CSV；空 = 本场参赛者+社长（赛前/事项/报名催办共用）
 
     participants: Mapped[list['ContestParticipant']] = relationship(
         back_populates='contest', cascade='all, delete-orphan'
@@ -196,5 +197,16 @@ class ApiKey(Base):
     prefix: Mapped[str] = mapped_column(String(16), default='')  # 如 topc_a1b2，用于列表识别
     key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AdminSession(Base):
+    """管理员登录会话：每次登录独立 token，互不影响，可多人同时在线。"""
+
+    __tablename__ = 'admin_sessions'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

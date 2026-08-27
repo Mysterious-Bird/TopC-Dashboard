@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { type Member } from '../data/mock'
+import { gradeFromEnrollYear } from '../data/grade'
 import { useData } from '../data/DataContext'
 import { saveMember } from '../api'
 import Modal, { Field, FormActions, inputCls } from './Modal'
@@ -24,7 +25,7 @@ export default function MemberForm({
     phone: initial?.phone ?? '',
     qq: initial?.qq ?? '',
     email: initial?.email ?? '',
-    grade: initial?.grade ?? '大一',
+    enrollYear: initial?.enrollYear != null ? String(initial.enrollYear) : String(new Date().getFullYear()),
     major: initial?.major ?? '',
     studentId: initial?.studentId ?? '',
     tags: (initial?.tags ?? []).join(', '),
@@ -36,15 +37,33 @@ export default function MemberForm({
   const toggleRole = (name: string) =>
     setF((p) => ({ ...p, roles: p.roles.includes(name) ? p.roles.filter((x) => x !== name) : [...p.roles, name] }))
 
+  const enrollYearNum = f.enrollYear.trim() ? Number(f.enrollYear) : null
+  const previewGrade =
+    enrollYearNum != null && Number.isFinite(enrollYearNum) ? gradeFromEnrollYear(enrollYearNum) : ''
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
     try {
+      const year = f.enrollYear.trim() ? Number(f.enrollYear) : null
+      if (year != null && (!Number.isInteger(year) || year < 2000 || year > 2100)) {
+        alert('入学年份请填写 2000–2100 的整数')
+        return
+      }
       await saveMember(
         {
-          ...f,
+          name: f.name,
           gender: f.gender as Member['gender'],
+          roles: f.roles,
+          phone: f.phone,
+          qq: f.qq,
+          email: f.email,
+          enrollYear: year,
+          major: f.major,
+          studentId: f.studentId,
           tags: f.tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
+          joinedAt: f.joinedAt,
+          color: f.color,
         },
         initial?.id,
       )
@@ -60,7 +79,7 @@ export default function MemberForm({
   return (
     <Modal title={initial ? `编辑成员 · ${initial.name}` : '添加成员'} onClose={onClose} wide>
       <form onSubmit={submit}>
-        <div className="grid grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
           <Field label="姓名 *">
             <input required value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
           </Field>
@@ -103,12 +122,22 @@ export default function MemberForm({
           <Field label="邮箱（用于赛前提醒）" className="col-span-2">
             <input type="email" value={f.email} onChange={(e) => set('email', e.target.value)} className={inputCls} />
           </Field>
-          <Field label="年级">
-            <select value={f.grade} onChange={(e) => set('grade', e.target.value)} className={inputCls}>
-              {['大一', '大二', '大三', '大四', '研究生'].map((g) => (
-                <option key={g}>{g}</option>
-              ))}
-            </select>
+          <Field label="入学年份">
+            <div className="flex items-center gap-2">
+              <input
+                required
+                type="number"
+                min={2000}
+                max={2100}
+                value={f.enrollYear}
+                onChange={(e) => set('enrollYear', e.target.value)}
+                className={inputCls}
+                placeholder="如 2025"
+              />
+              {previewGrade && (
+                <span className="shrink-0 text-[12px] text-ink-3 whitespace-nowrap">→ {previewGrade}</span>
+              )}
+            </div>
           </Field>
           <Field label="专业">
             <input value={f.major} onChange={(e) => set('major', e.target.value)} className={inputCls} />

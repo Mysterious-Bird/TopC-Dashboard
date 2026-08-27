@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { daysUntil, contestStatus } from '../data/mock'
 import { useData } from '../data/DataContext'
 import { LiveCountdown } from './fx'
@@ -32,6 +32,21 @@ export default function Layout() {
   const { pathname } = useLocation()
   const { contests, authed, logout } = useData()
   const [showLogin, setShowLogin] = useState(false)
+  const [navOpen, setNavOpen] = useState(false)
+
+  useEffect(() => {
+    setNavOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (!navOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [navOpen])
+
   const next = useMemo(() => {
     const upcoming = contests.filter((c) => contestStatus(c) === '未开始').sort(
       (a, b) => daysUntil(a.start) - daysUntil(b.start),
@@ -39,63 +54,104 @@ export default function Layout() {
     return upcoming[0]
   }, [contests])
 
-  return (
-    <div className="bg-scene relative flex h-screen overflow-hidden">
-      <BackgroundFX />
-      {/* sidebar */}
-      <aside className="relative z-10 flex w-[212px] shrink-0 flex-col border-r border-edge bg-panel/60 backdrop-blur">
-        <div className="flex items-center gap-3 px-5 pb-6 pt-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-edge-2 bg-panel-2 font-display text-sm font-bold tracking-tight">
-            <span className="bg-gradient-to-br from-neon to-violet bg-clip-text text-transparent">T/</span>
-          </div>
-          <div>
-            <div className="font-display text-[15px] font-semibold leading-tight tracking-tight">TopC</div>
-            <div className="tag-chip text-ink-3">CLUB CONSOLE</div>
-          </div>
+  const sidebar = (
+    <>
+      <div className="flex items-center gap-3 px-5 pb-5 pt-5 md:pb-6 md:pt-6">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-edge-2 bg-panel-2 font-display text-sm font-bold tracking-tight">
+          <span className="bg-gradient-to-br from-neon to-violet bg-clip-text text-transparent">T/</span>
         </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-[15px] font-semibold leading-tight tracking-tight">TopC</div>
+          <div className="tag-chip text-ink-3">CLUB CONSOLE</div>
+        </div>
+        <button
+          type="button"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-edge text-ink-3 md:hidden"
+          onClick={() => setNavOpen(false)}
+          aria-label="关闭菜单"
+        >
+          <IconClose className="h-4 w-4" />
+        </button>
+      </div>
 
-        <nav className="flex flex-col gap-1 px-3">
-          {NAV.filter((n) => !('adminOnly' in n && n.adminOnly) || authed).map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
-              className={({ isActive }) =>
-                `nav-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] transition-colors ${
-                  isActive ? 'active bg-panel-2 text-ink' : 'text-ink-2 hover:bg-panel-2/60 hover:text-ink'
-                }`
-              }
-            >
-              <n.icon className="h-[17px] w-[17px]" />
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
+      <nav className="flex flex-col gap-1 overflow-y-auto px-3 pb-3">
+        {NAV.filter((n) => !('adminOnly' in n && n.adminOnly) || authed).map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            end={n.end}
+            className={({ isActive }) =>
+              `nav-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] transition-colors ${
+                isActive ? 'active bg-panel-2 text-ink' : 'text-ink-2 hover:bg-panel-2/60 hover:text-ink'
+              }`
+            }
+          >
+            <n.icon className="h-[17px] w-[17px] shrink-0" />
+            {n.label}
+          </NavLink>
+        ))}
+      </nav>
 
-        <div className="mt-auto px-4 pb-5">
-          {next && (
-            <div className="panel grid-tex breathe p-3.5">
-              <div className="tag-chip text-ink-3">NEXT UP</div>
-              <div className="mt-1.5 text-[14px] font-medium leading-snug">{next.short}</div>
-              <div className="mt-2 text-[14px] text-neon">
-                <LiveCountdown to={new Date(next.start + 'T09:00:00')} compact />
-              </div>
-              <div className="mt-1 text-[11.5px] text-ink-3">
-                {daysUntil(next.start)} 天后开赛 · 提醒已排期
-              </div>
+      <div className="mt-auto px-4 pb-5 pt-2" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
+        {next && (
+          <div className="panel grid-tex breathe p-3.5">
+            <div className="tag-chip text-ink-3">NEXT UP</div>
+            <div className="mt-1.5 text-[14px] font-medium leading-snug">{next.short}</div>
+            <div className="mt-2 text-[14px] text-neon">
+              <LiveCountdown to={new Date(next.start + 'T09:00:00')} compact />
             </div>
-          )}
-        </div>
+            <div className="mt-1 text-[11.5px] text-ink-3">
+              {daysUntil(next.start)} 天后开赛 · 提醒已排期
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  )
+
+  return (
+    <div className="bg-scene relative flex h-dvh max-h-dvh overflow-hidden">
+      <BackgroundFX />
+
+      {/* 移动端遮罩 */}
+      {navOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-abyss/70 backdrop-blur-sm md:hidden"
+          aria-label="关闭菜单"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
+
+      {/* sidebar：桌面常驻；手机抽屉 */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-[min(280px,86vw)] flex-col border-r border-edge bg-panel/95 backdrop-blur-md transition-transform duration-200 ease-out md:relative md:z-10 md:w-[212px] md:translate-x-0 md:bg-panel/60 md:backdrop-blur ${
+          navOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        {sidebar}
       </aside>
 
       {/* main */}
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-edge bg-abyss/40 px-6 backdrop-blur-sm">
-          <div className="flex items-center gap-3 text-[15px]">
-            <span className="font-mono text-[12px] text-ink-3">topc://</span>
-            <span className="text-ink-2">{TITLES[pathname] ?? ''}</span>
+        <header
+          className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-edge bg-abyss/40 px-3 backdrop-blur-sm sm:h-[57px] sm:px-6"
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
+        >
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-edge bg-panel text-ink-2 md:hidden"
+              onClick={() => setNavOpen(true)}
+              aria-label="打开菜单"
+            >
+              <IconMenu className="h-4 w-4" />
+            </button>
+            <span className="hidden font-mono text-[12px] text-ink-3 sm:inline">topc://</span>
+            <span className="truncate text-[14px] text-ink-2 sm:text-[15px]">{TITLES[pathname] ?? ''}</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <button
               onClick={() => {
                 if (authed) {
@@ -116,7 +172,7 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <Outlet />
         </main>
       </div>
@@ -125,6 +181,20 @@ export default function Layout() {
   )
 }
 
+function IconMenu({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  )
+}
+function IconClose({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  )
+}
 function IconDash({ className = '' }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>

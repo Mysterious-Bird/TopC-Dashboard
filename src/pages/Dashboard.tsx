@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { TODAY, contestStatus, daysUntil, durationDays } from '../data/mock'
 import type { Contest } from '../data/mock'
 import { useData } from '../data/DataContext'
 import { CategoryTag, Eyebrow, Panel, ParticipantChips, StatusPill } from '../components/ui'
 import { CountUp, DecryptedText, LiveCountdown, Meteors, Spotlight } from '../components/fx'
+import { compareImportance, rankOf, tierOf, type Award } from '../data/awards'
 
 export default function Dashboard() {
   const { members, contests } = useData()
@@ -24,9 +25,9 @@ export default function Dashboard() {
     })
 
   return (
-    <div className="mx-auto max-w-[1200px] px-6 py-6">
+    <div className="mx-auto max-w-[1200px] px-4 py-4 sm:px-6 sm:py-6">
       {/* hero strip */}
-      <div className="panel grid-tex rise-in relative overflow-hidden p-6">
+      <div className="panel grid-tex rise-in relative overflow-hidden p-4 sm:p-6">
         <Meteors count={10} />
         <div
           className="float-y pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full opacity-30 blur-3xl"
@@ -34,11 +35,11 @@ export default function Dashboard() {
         />
         <Eyebrow>Dashboard</Eyebrow>
         <div className="relative flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight">
+          <div className="min-w-0">
+            <h1 className="font-display text-[22px] font-semibold leading-tight tracking-tight sm:text-[28px]">
               <DecryptedText text="下午好，TopC 控制台" />
             </h1>
-            <p className="mt-1 text-[15px] text-ink-2">
+            <p className="mt-1 text-[14px] text-ink-2 sm:text-[15px]">
               当前 <span className="text-jade">{ongoing.length} 场比赛进行中</span>
               {upcoming[0] && (
                 <>
@@ -54,7 +55,7 @@ export default function Dashboard() {
       </div>
 
       {/* stats */}
-      <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-5 sm:gap-4 lg:grid-cols-4">
         <Stat label="社团成员" value={members.length} unit="人" accent="#22d3ee" foot="本学期新增 8 人" />
         <Stat label="进行中比赛" value={ongoing.length} unit="场" accent="#34d399" foot="信安作品赛 / Kaggle 等" />
         <Stat label="待开赛" value={upcoming.length} unit="场" accent="#a78bfa" foot={`最近：${upcoming[0]?.short ?? '-'}`} />
@@ -225,9 +226,30 @@ function HeroSide({ contests }: { contests: Contest[] }) {
   }, [])
   const pad = (n: number) => String(n).padStart(2, '0')
   const week = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][now.getDay()]
-  const latest = contests
-    .flatMap((c) => c.results.map((r) => ({ c, r })))
-    .sort((a, b) => b.c.end.localeCompare(a.c.end))[0]
+
+  /** 仅 1 项 → 时间最近；有多项时取最重要的一项展示 */
+  const highlight = useMemo(() => {
+    const list: (Award & { short: string })[] = []
+    contests.forEach((c) => {
+      c.results.forEach((r) => {
+        list.push({
+          id: `${c.id}-${r.id}`,
+          award: r.award,
+          contest: c.name,
+          contestId: c.id,
+          date: c.end.slice(0, 7),
+          dateFull: c.end,
+          tier: tierOf(r.award, c.name),
+          memberIds: r.memberIds,
+          rank: rankOf(r.award),
+          short: c.short,
+        })
+      })
+    })
+    if (list.length === 0) return null
+    if (list.length === 1) return list[0]
+    return [...list].sort(compareImportance)[0]
+  }, [contests])
 
   return (
     <div className="shrink-0 rounded-xl border border-edge bg-panel-2/40 px-5 py-4 text-right backdrop-blur-sm">
@@ -245,14 +267,14 @@ function HeroSide({ contests }: { contests: Contest[] }) {
       <div className="mt-1.5 font-mono text-[12px] text-ink-2">
         {now.getFullYear()}-{pad(now.getMonth() + 1)}-{pad(now.getDate())} · {week}
       </div>
-      {latest && (
+      {highlight && (
         <div className="mt-3 flex items-center justify-end gap-2 border-t border-edge/60 pt-3">
           <span className="glow-dot h-1.5 w-1.5 shrink-0 rounded-full bg-amber text-amber" />
           <span
             className="max-w-[260px] truncate text-[12px] text-ink-2"
-            title={`${latest.c.short} · ${latest.r.award}`}
+            title={`${highlight.short} · ${highlight.award}`}
           >
-            最新荣誉 <span className="font-medium text-amber">{latest.r.award}</span> · {latest.c.short}
+            最新荣誉 <span className="font-medium text-amber">{highlight.award}</span> · {highlight.short}
           </span>
         </div>
       )}

@@ -1,5 +1,7 @@
 /* 职位是动态实体（可扩展），不再是写死的枚举。
    管理关系 = managesAll 全局规则 + manages 显式规则，图谱职务连线由此推导。 */
+import { gradeFromEnrollYear } from './grade'
+
 export interface RoleDef {
   id: string
   name: string
@@ -21,7 +23,8 @@ export interface Member {
   qq: string
   email: string
   roles: string[] // 可挂多个职位
-  grade: string // 年级
+  enrollYear: number | null // 入学年份；年级按每年 9/1 自动推算
+  grade: string // 展示用（由 enrollYear 推算）
   major: string // 专业
   studentId: string // 学号
   tags: string[] // 技术栈
@@ -116,20 +119,20 @@ export function deriveRoleLinks(members: Member[], roles: RoleDef[]): [string, s
 }
 
 export const MEMBERS: Member[] = [
-  { id: 'm01', name: '林亦风', gender: '男', phone: '138****2201', qq: '821034556', email: 'linyf@topc.dev', roles: ['社长'], grade: '大三', major: '计算机科学与技术', studentId: '2023****01', tags: ['全栈', 'Rust', '架构'], joinedAt: '2023-09-01', color: '#22d3ee' },
-  { id: 'm02', name: '苏晚星', gender: '女', phone: '137****8842', qq: '790123884', email: 'suwx@topc.dev', roles: ['副社长', 'TC部成员'], grade: '大三', major: '软件工程', studentId: '2023****02', tags: ['算法', 'C++', '竞赛'], joinedAt: '2023-09-01', color: '#a78bfa' },
-  { id: 'm03', name: '赵擎苍', gender: '男', phone: '139****9024', qq: '417766230', email: 'zhaoqc@topc.dev', roles: ['监察部部长', 'AC部成员'], grade: '大二', major: '网络空间安全', studentId: '2024****05', tags: ['CTF', 'Pwn', '逆向'], joinedAt: '2024-09-02', color: '#f87171' },
-  { id: 'm04', name: '许青梧', gender: '女', phone: '188****5567', qq: '552019376', email: 'xuqw@topc.dev', roles: ['AC部部长'], grade: '大二', major: '人工智能', studentId: '2024****04', tags: ['DP', '图论', 'Python'], joinedAt: '2024-09-02', color: '#fbbf24' },
-  { id: 'm05', name: '顾清让', gender: '女', phone: '136****7743', qq: '905512847', email: 'guqr@topc.dev', roles: ['设计部部长'], grade: '大二', major: '数字媒体技术', studentId: '2024****06', tags: ['设计', '视频', '运营'], joinedAt: '2024-09-02', color: '#f472b6' },
-  { id: 'm06', name: '陈砚舟', gender: '男', phone: '150****3310', qq: '630288145', email: 'chenyz@topc.dev', roles: ['TC部成员'], grade: '大二', major: '计算机科学与技术', studentId: '2024****03', tags: ['前端', 'React', 'Three.js'], joinedAt: '2024-09-02', color: '#34d399' },
-  { id: 'm07', name: '何思源', gender: '男', phone: '155****4419', qq: '308844961', email: 'hesy@topc.dev', roles: ['TC部成员'], grade: '大一', major: '计算机科学与技术', studentId: '2025****07', tags: ['Go', '后端'], joinedAt: '2025-09-01', color: '#38bdf8' },
-  { id: 'm08', name: '沈知夏', gender: '女', phone: '152****6680', qq: '223019458', email: 'shenzx@topc.dev', roles: ['AC部成员'], grade: '大一', major: '软件工程', studentId: '2025****08', tags: ['Vue', 'TypeScript'], joinedAt: '2025-09-01', color: '#4ade80' },
-  { id: 'm09', name: '韩景行', gender: '男', phone: '187****2255', qq: '774120693', email: 'hanjx@topc.dev', roles: ['AC部成员'], grade: '大一', major: '人工智能', studentId: '2025****09', tags: ['数论', '组合数学'], joinedAt: '2025-09-01', color: '#facc15' },
-  { id: 'm10', name: '唐雨桐', gender: '女', phone: '135****8874', qq: '661337209', email: 'tangyt@topc.dev', roles: ['设计部成员'], grade: '大一', major: '数据科学', studentId: '2025****10', tags: ['机器学习', 'PyTorch'], joinedAt: '2025-09-01', color: '#c084fc' },
-  { id: 'm11', name: '罗亦凡', gender: '男', phone: '186****1102', qq: '149885730', email: 'luoyf@topc.dev', roles: ['AC部成员'], grade: '大二', major: '网络空间安全', studentId: '2024****11', tags: ['Web安全', '渗透'], joinedAt: '2024-09-02', color: '#fb923c' },
-  { id: 'm12', name: '纪云舒', gender: '女', phone: '158****3346', qq: '330671284', email: 'jiys@topc.dev', roles: ['AC部成员'], grade: '大二', major: '信息安全', studentId: '2024****12', tags: ['Crypto', 'Misc'], joinedAt: '2024-09-02', color: '#2dd4bf' },
-  { id: 'm13', name: '温以凡', gender: '男', phone: '177****9921', qq: '518203947', email: 'wenyf@topc.dev', roles: ['设计部成员'], grade: '大一', major: '数字媒体技术', studentId: '2025****13', tags: ['摄影', '剪辑'], joinedAt: '2025-09-01', color: '#e879f9' },
-  { id: 'm14', name: '白露白', gender: '女', phone: '133****5578', qq: '882914630', email: '', roles: ['设计部成员'], grade: '大一', major: '视觉传达', studentId: '2025****14', tags: ['海报', 'UI'], joinedAt: '2025-09-01', color: '#93c5fd' },
+  { id: 'm01', name: '林亦风', gender: '男', phone: '138****2201', qq: '821034556', email: 'linyf@topc.dev', roles: ['社长'], enrollYear: 2023, grade: gradeFromEnrollYear(2023), major: '计算机科学与技术', studentId: '2023****01', tags: ['全栈', 'Rust', '架构'], joinedAt: '2023-09-01', color: '#22d3ee' },
+  { id: 'm02', name: '苏晚星', gender: '女', phone: '137****8842', qq: '790123884', email: 'suwx@topc.dev', roles: ['副社长', 'TC部成员'], enrollYear: 2023, grade: gradeFromEnrollYear(2023), major: '软件工程', studentId: '2023****02', tags: ['算法', 'C++', '竞赛'], joinedAt: '2023-09-01', color: '#a78bfa' },
+  { id: 'm03', name: '赵擎苍', gender: '男', phone: '139****9024', qq: '417766230', email: 'zhaoqc@topc.dev', roles: ['监察部部长', 'AC部成员'], enrollYear: 2024, grade: gradeFromEnrollYear(2024), major: '网络空间安全', studentId: '2024****05', tags: ['CTF', 'Pwn', '逆向'], joinedAt: '2024-09-02', color: '#f87171' },
+  { id: 'm04', name: '许青梧', gender: '女', phone: '188****5567', qq: '552019376', email: 'xuqw@topc.dev', roles: ['AC部部长'], enrollYear: 2024, grade: gradeFromEnrollYear(2024), major: '人工智能', studentId: '2024****04', tags: ['DP', '图论', 'Python'], joinedAt: '2024-09-02', color: '#fbbf24' },
+  { id: 'm05', name: '顾清让', gender: '女', phone: '136****7743', qq: '905512847', email: 'guqr@topc.dev', roles: ['设计部部长'], enrollYear: 2024, grade: gradeFromEnrollYear(2024), major: '数字媒体技术', studentId: '2024****06', tags: ['设计', '视频', '运营'], joinedAt: '2024-09-02', color: '#f472b6' },
+  { id: 'm06', name: '陈砚舟', gender: '男', phone: '150****3310', qq: '630288145', email: 'chenyz@topc.dev', roles: ['TC部成员'], enrollYear: 2024, grade: gradeFromEnrollYear(2024), major: '计算机科学与技术', studentId: '2024****03', tags: ['前端', 'React', 'Three.js'], joinedAt: '2024-09-02', color: '#34d399' },
+  { id: 'm07', name: '何思源', gender: '男', phone: '155****4419', qq: '308844961', email: 'hesy@topc.dev', roles: ['TC部成员'], enrollYear: 2025, grade: gradeFromEnrollYear(2025), major: '计算机科学与技术', studentId: '2025****07', tags: ['Go', '后端'], joinedAt: '2025-09-01', color: '#38bdf8' },
+  { id: 'm08', name: '沈知夏', gender: '女', phone: '152****6680', qq: '223019458', email: 'shenzx@topc.dev', roles: ['AC部成员'], enrollYear: 2025, grade: gradeFromEnrollYear(2025), major: '软件工程', studentId: '2025****08', tags: ['Vue', 'TypeScript'], joinedAt: '2025-09-01', color: '#4ade80' },
+  { id: 'm09', name: '韩景行', gender: '男', phone: '187****2255', qq: '774120693', email: 'hanjx@topc.dev', roles: ['AC部成员'], enrollYear: 2025, grade: gradeFromEnrollYear(2025), major: '人工智能', studentId: '2025****09', tags: ['数论', '组合数学'], joinedAt: '2025-09-01', color: '#facc15' },
+  { id: 'm10', name: '唐雨桐', gender: '女', phone: '135****8874', qq: '661337209', email: 'tangyt@topc.dev', roles: ['设计部成员'], enrollYear: 2025, grade: gradeFromEnrollYear(2025), major: '数据科学', studentId: '2025****10', tags: ['机器学习', 'PyTorch'], joinedAt: '2025-09-01', color: '#c084fc' },
+  { id: 'm11', name: '罗亦凡', gender: '男', phone: '186****1102', qq: '149885730', email: 'luoyf@topc.dev', roles: ['AC部成员'], enrollYear: 2024, grade: gradeFromEnrollYear(2024), major: '网络空间安全', studentId: '2024****11', tags: ['Web安全', '渗透'], joinedAt: '2024-09-02', color: '#fb923c' },
+  { id: 'm12', name: '纪云舒', gender: '女', phone: '158****3346', qq: '330671284', email: 'jiys@topc.dev', roles: ['AC部成员'], enrollYear: 2024, grade: gradeFromEnrollYear(2024), major: '信息安全', studentId: '2024****12', tags: ['Crypto', 'Misc'], joinedAt: '2024-09-02', color: '#2dd4bf' },
+  { id: 'm13', name: '温以凡', gender: '男', phone: '177****9921', qq: '518203947', email: 'wenyf@topc.dev', roles: ['设计部成员'], enrollYear: 2025, grade: gradeFromEnrollYear(2025), major: '数字媒体技术', studentId: '2025****13', tags: ['摄影', '剪辑'], joinedAt: '2025-09-01', color: '#e879f9' },
+  { id: 'm14', name: '白露白', gender: '女', phone: '133****5578', qq: '882914630', email: '', roles: ['设计部成员'], enrollYear: 2025, grade: gradeFromEnrollYear(2025), major: '视觉传达', studentId: '2025****14', tags: ['海报', 'UI'], joinedAt: '2025-09-01', color: '#93c5fd' },
 ]
 
 const team = (id: string, name: string, memberIds: string[]): Team => ({ id, name, memberIds })
@@ -166,7 +169,9 @@ export const CATEGORY_COLOR: Record<ContestCategory, string> = {
   建模: '#fbbf24',
 }
 
-export const TODAY = new Date('2026-08-19T00:00:00')
+import { chinaToday } from './date'
+
+export const TODAY = chinaToday()
 
 export function contestStatus(c: Contest, now: Date = TODAY): '已结束' | '进行中' | '未开始' {
   const s = new Date(c.start + 'T00:00:00')
@@ -178,11 +183,14 @@ export function contestStatus(c: Contest, now: Date = TODAY): '已结束' | '进
 
 export function daysUntil(iso: string, now: Date = TODAY): number {
   const d = new Date(iso + 'T00:00:00').getTime()
-  return Math.ceil((d - now.getTime()) / 86400000)
+  const n = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  return Math.round((d - n) / 86400000)
 }
 
 export function durationDays(c: Contest): number {
-  return Math.round((new Date(c.end).getTime() - new Date(c.start).getTime()) / 86400000) + 1
+  const s = new Date(c.start + 'T00:00:00').getTime()
+  const e = new Date(c.end + 'T00:00:00').getTime()
+  return Math.round((e - s) / 86400000) + 1
 }
 
 export function memberById(id: string): Member {

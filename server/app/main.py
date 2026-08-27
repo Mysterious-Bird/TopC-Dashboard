@@ -11,6 +11,8 @@ from .db import Base, engine
 from .keys import ApiKeyAuthMiddleware
 from .keys import router as keys_router
 from .mcp_server import mcp
+from .migrate import ensure_member_enroll_year
+from .models import AdminSession  # noqa: F401 — 注册表供 create_all
 from .routers import api
 from .scheduler import check_and_send_reminders, start_scheduler
 
@@ -23,6 +25,7 @@ mcp_http_app = ApiKeyAuthMiddleware(mcp.streamable_http_app())
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(engine)
+    ensure_member_enroll_year()
     start_scheduler()
     # MCP session manager 需要常驻任务组（挂载的子应用不会自动跑 lifespan）
     async with mcp.session_manager.run():

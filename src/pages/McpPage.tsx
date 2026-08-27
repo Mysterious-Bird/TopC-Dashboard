@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useData } from '../data/DataContext'
 import { PageTitle, Panel, Eyebrow } from '../components/ui'
-import Modal, { Field, inputCls } from '../components/Modal'
+import Modal, { Field, FormActions, inputCls } from '../components/Modal'
 import {
   createApiKey,
   deleteApiKey,
@@ -9,14 +9,21 @@ import {
   updateApiKey,
   type ApiKeyItem,
 } from '../api'
+import { formatChinaDateTime } from '../data/date'
+
+function defaultKeyName() {
+  return `API Key · ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}`
+}
 
 export default function McpPage() {
   const { authed } = useData()
   const [keys, setKeys] = useState<ApiKeyItem[]>([])
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [showCreate, setShowCreate] = useState(false)
   const [created, setCreated] = useState<(ApiKeyItem & { key: string }) | null>(null)
   const [copied, setCopied] = useState<string>('')
+  const [createErr, setCreateErr] = useState('')
 
   const endpoint = useMemo(() => `${window.location.origin}/api/mcp/`, [])
 
@@ -43,16 +50,33 @@ export default function McpPage() {
     setTimeout(() => setCopied(''), 1600)
   }
 
-  const create = async () => {
-    if (!name.trim() || creating) return
+  const openCreate = () => {
+    setName(defaultKeyName())
+    setCreateErr('')
+    setShowCreate(true)
+  }
+
+  const closeCreate = () => {
+    if (creating) return
+    setShowCreate(false)
+    setCreateErr('')
+  }
+
+  const create = async (e?: { preventDefault(): void }) => {
+    e?.preventDefault()
+    if (creating) return
+    const label = name.trim() || defaultKeyName()
+    setCreateErr('')
     setCreating(true)
     try {
-      const k = await createApiKey(name.trim())
+      const k = await createApiKey(label)
+      setShowCreate(false)
       setCreated(k)
       setName('')
       load()
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : '创建失败')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '创建失败'
+      setCreateErr(msg)
     } finally {
       setCreating(false)
     }
@@ -94,7 +118,7 @@ export default function McpPage() {
 
   if (!authed) {
     return (
-      <div className="mx-auto max-w-[1200px] px-6 py-16 text-center">
+      <div className="mx-auto max-w-[1200px] px-4 py-12 sm:px-6 sm:py-16 text-center">
         <div className="font-display text-2xl text-ink">MCP 服务</div>
         <p className="mt-2 text-[15px] text-ink-3">请先点击右上角图标登录管理员，再管理 API Key。</p>
       </div>
@@ -102,7 +126,7 @@ export default function McpPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1200px] px-6 py-6">
+    <div className="mx-auto max-w-[1200px] px-4 py-4 sm:px-6 sm:py-6">
       <PageTitle title="MCP 服务" sub="远程 MCP 接入 · 凭 API Key 完成成员 / 职位 / 比赛全量增删改查" />
 
       {/* 接入信息 */}
@@ -179,22 +203,13 @@ export default function McpPage() {
             <Eyebrow>Credentials</Eyebrow>
             <h2 className="font-display text-[16px] font-semibold">API Keys</h2>
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && create()}
-              placeholder="Key 用途备注，如：本地开发机"
-              className={`${inputCls} w-56`}
-            />
-            <button
-              onClick={create}
-              disabled={creating || !name.trim()}
-              className="shrink-0 rounded-lg bg-neon/15 px-4 py-2 text-[14px] font-medium text-neon ring-1 ring-inset ring-neon/40 transition hover:bg-neon/25 disabled:opacity-50"
-            >
-              {creating ? '创建中…' : '+ 创建 Key'}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="shrink-0 rounded-lg bg-neon/15 px-4 py-2 text-[14px] font-medium text-neon ring-1 ring-inset ring-neon/40 transition hover:bg-neon/25"
+          >
+            + 创建 Key
+          </button>
         </div>
 
         <div className="mt-4 overflow-hidden rounded-lg border border-edge">
@@ -218,9 +233,9 @@ export default function McpPage() {
                     </button>
                   </td>
                   <td className="px-4 py-3 font-mono text-[13px] text-ink-2">{k.prefix}…•••</td>
-                  <td className="px-4 py-3 font-mono text-[12.5px] text-ink-3">{k.created_at.replace('T', ' ')}</td>
+                  <td className="px-4 py-3 font-mono text-[12.5px] text-ink-3">{formatChinaDateTime(k.created_at)}</td>
                   <td className="px-4 py-3 font-mono text-[12.5px] text-ink-3">
-                    {k.last_used_at ? k.last_used_at.replace('T', ' ') : '从未使用'}
+                    {k.last_used_at ? formatChinaDateTime(k.last_used_at) : '从未使用'}
                   </td>
                   <td className="px-4 py-3">
                     <button
@@ -259,6 +274,31 @@ export default function McpPage() {
           Key 只存哈希，明文仅在创建时展示一次，请立即复制保存；停用后该 Key 即刻失效。
         </p>
       </Panel>
+
+      {/* 创建弹窗：填写备注 */}
+      {showCreate && (
+        <Modal title="创建 API Key" onClose={closeCreate}>
+          <form onSubmit={(e) => void create(e)}>
+            <Field label="用途备注">
+              <input
+                autoFocus
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  if (createErr) setCreateErr('')
+                }}
+                placeholder="如：本地开发机；可留空使用时间名称"
+                className={inputCls}
+              />
+            </Field>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-ink-3">
+              默认已填入时间名称，可直接创建或改成更易辨认的备注。
+            </p>
+            {createErr && <p className="mt-2 text-[13px] text-rose">{createErr}</p>}
+            <FormActions saving={creating} onCancel={closeCreate} submitLabel="创建" />
+          </form>
+        </Modal>
+      )}
 
       {/* 创建成功：一次性展示 */}
       {created && (

@@ -7,6 +7,7 @@ import {
   durationDays,
   type Contest,
 } from '../data/mock'
+import { toDateIso } from '../data/date'
 import { useData } from '../data/DataContext'
 import { CategoryTag, PageTitle, Panel, ParticipantChips, StatusPill } from '../components/ui'
 import ContestForm from '../components/ContestForm'
@@ -14,18 +15,51 @@ import { deleteContest } from '../api'
 
 type View = 'gantt' | 'calendar'
 
-const RANGE_START = new Date('2026-07-01T00:00:00')
-const RANGE_END = new Date('2026-12-31T00:00:00')
-const TOTAL_DAYS = Math.round((RANGE_END.getTime() - RANGE_START.getTime()) / 86400000) + 1
-
 /* 时间轴固定像素宽度：默认每天 13px，可缩放，拖动横向滚动查看 */
 const DEFAULT_PX_PER_DAY = 13
 const MIN_PX = 6
 const MAX_PX = 30
-const LABEL_W = 260
+const LABEL_W_DESKTOP = 260
+const LABEL_W_MOBILE = 112
+const PAD_MONTHS = 1
 
-const dayIndex = (iso: string) =>
-  Math.round((new Date(iso + 'T00:00:00').getTime() - RANGE_START.getTime()) / 86400000)
+const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1)
+const endOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0)
+const parseIso = (iso: string) => new Date(iso + 'T00:00:00')
+
+function useLabelWidth() {
+  const [w, setW] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+      ? LABEL_W_MOBILE
+      : LABEL_W_DESKTOP,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const apply = () => setW(mq.matches ? LABEL_W_MOBILE : LABEL_W_DESKTOP)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+  return w
+}
+
+function computeTimelineRange(contests: Contest[]) {
+  const dates: Date[] = [TODAY]
+  for (const c of contests) {
+    dates.push(parseIso(c.start))
+    dates.push(parseIso(c.end))
+  }
+  if (contests.length === 0) {
+    const s = startOfMonth(new Date(TODAY.getFullYear(), TODAY.getMonth() - 2, 1))
+    const e = endOfMonth(new Date(TODAY.getFullYear(), TODAY.getMonth() + 4, 1))
+    return { rangeStart: s, rangeEnd: e, totalDays: Math.round((e.getTime() - s.getTime()) / 86400000) + 1 }
+  }
+  const min = new Date(Math.min(...dates.map((d) => d.getTime())))
+  const max = new Date(Math.max(...dates.map((d) => d.getTime())))
+  const rangeStart = startOfMonth(new Date(min.getFullYear(), min.getMonth() - PAD_MONTHS, 1))
+  const rangeEnd = endOfMonth(new Date(max.getFullYear(), max.getMonth() + PAD_MONTHS, 1))
+  return { rangeStart, rangeEnd, totalDays: Math.round((rangeEnd.getTime() - rangeStart.getTime()) / 86400000) + 1 }
+}
 
 export default function Contests() {
   const { contests, refresh, authed } = useData()
@@ -33,6 +67,11 @@ export default function Contests() {
   const [hover, setHover] = useState<Contest | null>(null)
   const [selected, setSelected] = useState<Contest | null>(null)
   const [editing, setEditing] = useState<Contest | null | 'new'>(null)
+  const LABEL_W = useLabelWidth()
+  const { rangeStart, rangeEnd, totalDays } = useMemo(() => computeTimelineRange(contests), [contests])
+
+  const dayIndex = (iso: string) =>
+    Math.round((parseIso(iso).getTime() - rangeStart.getTime()) / 86400000)
 
   const remove = async (c: Contest) => {
     if (!window.confirm(`确定删除比赛「${c.name}」吗？`)) return
@@ -42,14 +81,14 @@ export default function Contests() {
   }
 
   const sorted = useMemo(() => [...contests].sort((a, b) => a.start.localeCompare(b.start)), [contests])
-  const todayIdx = dayIndex(TODAY.toISOString().slice(0, 10))
+  const todayIdx = dayIndex(toDateIso(TODAY))
 
   /* 时间轴拖动滚动 + 缩放 */
   const scrollRef = useRef<HTMLDivElement>(null)
   const dragState = useRef({ down: false, startX: 0, startScroll: 0, moved: false })
   const [pxPerDay, setPxPerDay] = useState(DEFAULT_PX_PER_DAY)
   const pendingCenter = useRef<number | null>(null)
-  const chartW = TOTAL_DAYS * pxPerDay
+  const chartW = totalDays * pxPerDay
 
   const zoom = (dir: 1 | -1) => {
     const el = scrollRef.current
@@ -76,13 +115,13 @@ export default function Contests() {
     dragState.current.down = false
   }
 
-  /* 默认滚动到「今天」居中 */
+  /* 默认滚动到「今天」居中；比赛数据到位后范围变化时再对齐一次 */
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     el.scrollLeft = Math.max(0, LABEL_W + (todayIdx + 0.5) * pxPerDay - el.clientWidth / 2)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [totalDays])
 
   /* 缩放后保持可视中心对应的日期不变 */
   useEffect(() => {
@@ -94,8 +133,8 @@ export default function Contests() {
 
   const months = useMemo(() => {
     const list: { label: string; days: number }[] = []
-    const cur = new Date(RANGE_START)
-    while (cur <= RANGE_END) {
+    const cur = new Date(rangeStart)
+    while (cur <= rangeEnd) {
       const y = cur.getFullYear()
       const m = cur.getMonth()
       const days = new Date(y, m + 1, 0).getDate() - cur.getDate() + 1
@@ -103,10 +142,10 @@ export default function Contests() {
       cur.setMonth(m + 1, 1)
     }
     return list
-  }, [])
+  }, [rangeStart, rangeEnd])
 
   return (
-    <div className="mx-auto max-w-[1200px] px-6 py-6">
+    <div className="mx-auto max-w-[1200px] px-4 py-4 sm:px-6 sm:py-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageTitle title="比赛安排" sub="甘特图查看时间跨度与冲突 · 日历查看月度分布" />
         <div className="flex items-center gap-3">
@@ -169,9 +208,12 @@ export default function Contests() {
             <div style={{ width: LABEL_W + chartW }}>
               {/* month header */}
               <div className="flex border-b border-edge">
-                <div className="sticky left-0 z-30 flex w-[260px] shrink-0 items-center justify-between gap-2 border-r border-edge bg-panel px-5 py-3 text-[12px] uppercase tracking-wider text-ink-3">
-                  <span>比赛 / 时间轴</span>
-                  <span className="font-mono normal-case tracking-normal text-ink-3/70">⇠ 拖动 ⇢</span>
+                <div
+                  className="sticky left-0 z-30 flex shrink-0 items-center justify-between gap-1 border-r border-edge bg-panel px-2 py-3 text-[11px] uppercase tracking-wider text-ink-3 sm:gap-2 sm:px-5 sm:text-[12px]"
+                  style={{ width: LABEL_W }}
+                >
+                  <span className="truncate">比赛</span>
+                  <span className="hidden font-mono normal-case tracking-normal text-ink-3/70 sm:inline">⇠ 拖动 ⇢</span>
                 </div>
                 <div className="flex">
                   {months.map((mo) => (
@@ -234,11 +276,14 @@ export default function Contests() {
                           isSel ? 'bg-panel-2/70' : 'hover:bg-panel-2/40'
                         }`}
                       >
-                        <div className="sticky left-0 z-20 flex w-[260px] shrink-0 items-center gap-3 self-stretch border-r border-edge bg-panel px-5 py-3.5">
+                        <div
+                          className="sticky left-0 z-20 flex shrink-0 items-center gap-2 self-stretch border-r border-edge bg-panel px-2 py-3 sm:gap-3 sm:px-5 sm:py-3.5"
+                          style={{ width: LABEL_W }}
+                        >
                           <span className="h-7 w-1 shrink-0 rounded-full" style={{ background: c.color }} />
                           <div className="min-w-0">
-                            <div className="truncate text-[14px] font-medium">{c.short}</div>
-                            <div className="mt-0.5 text-[12px] text-ink-3">
+                            <div className="truncate text-[13px] font-medium sm:text-[14px]">{c.short}</div>
+                            <div className="mt-0.5 hidden text-[12px] text-ink-3 sm:block">
                               {c.level} · {c.isTeam ? `${c.teams.length} 队·每队 ${c.teamSize} 人` : '个人赛'}
                             </div>
                           </div>
@@ -464,7 +509,10 @@ function Detail({ label, children, mono }: { label: string; children: React.Reac
 /* ---------------- Calendar view ---------------- */
 
 function CalendarView({ contests, onPick }: { contests: Contest[]; onPick: (c: Contest) => void }) {
-  const [cursor, setCursor] = useState(new Date(2026, 7, 1)) // 2026-08
+  const [cursor, setCursor] = useState(() => {
+    const t = TODAY
+    return new Date(t.getFullYear(), t.getMonth(), 1)
+  })
   const y = cursor.getFullYear()
   const m = cursor.getMonth()
   const first = new Date(y, m, 1)
@@ -503,7 +551,7 @@ function CalendarView({ contests, onPick }: { contests: Contest[]; onPick: (c: C
             ←
           </button>
           <button
-            onClick={() => setCursor(new Date(2026, 7, 1))}
+            onClick={() => setCursor(new Date(TODAY.getFullYear(), TODAY.getMonth(), 1))}
             className="rounded-md border border-edge px-2.5 py-1 text-[14px] text-ink-2 transition hover:bg-panel-2 hover:text-ink"
           >
             今天
