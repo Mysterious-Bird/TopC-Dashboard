@@ -350,14 +350,8 @@ export default function GraphPage() {
             onNodeHover={(n: any) => setHoverId(n?.id ?? null)}
             onNodeClick={(n: any) => setFocusId(n.id === focusId ? null : n.id)}
             onBackgroundClick={() => setFocusId(null)}
-            onNodeDragEnd={(n: any) => {
-              n.fx = n.x
-              n.fy = n.y
-            }}
-            onNodeRightClick={(n: any) => {
-              n.fx = undefined
-              n.fy = undefined
-            }}
+            // 拖拽结束不写 fx/fy：保留库默认的松手释放行为，
+            // 节点重新参与力布局（之前覆写 onNodeDragEnd 钉住节点导致“失去斥力”）
             warmupTicks={100}
             cooldownTime={4000}
             d3AlphaDecay={0.04}
