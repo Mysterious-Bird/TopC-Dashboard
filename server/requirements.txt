@@ -6,4 +6,4 @@ cryptography>=43.0
 apscheduler>=3.10,<4.0
 python-dotenv>=1.0
 pydantic>=2.9
-mcp>=1.10
+mcp>=1.10,<2

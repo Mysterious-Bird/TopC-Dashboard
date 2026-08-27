@@ -137,7 +137,7 @@ export default function GraphPage() {
     ;(fg.d3Force('link') as any)?.distance((l: any) => (l.kind === 'role' ? 115 : 160))
     fg.d3Force(
       'collide',
-      forceCollide((n: any) => 26 + Math.min((n as GNode).degree, 8) * 1.2).strength(1),
+      forceCollide((n: any) => 34 + Math.min((n as GNode).degree, 8) * 1.5).strength(1),
     )
   }, [])
 
@@ -201,7 +201,7 @@ export default function GraphPage() {
       const dim = isDim(n.id)
       const isAnchor = (hoverId ?? focusId) === n.id
       const inGroup = groupMembers?.has(n.id) ?? false
-      const r = 2 + Math.min(n.degree, 8) * 0.35 + (isAnchor ? 0.7 : 0) + (inGroup && !dim ? 0.4 : 0)
+      const r = 2.8 + Math.min(n.degree, 8) * 0.5 + (isAnchor ? 0.9 : 0) + (inGroup && !dim ? 0.5 : 0)
 
       ctx.save()
       ctx.globalAlpha = dim ? 0.18 : 1
@@ -233,16 +233,16 @@ export default function GraphPage() {
       // label：屏幕像素恒定字号，避免缩放后圈/字比例失调
       const showLabel = k > 0.85 || isAnchor || (!dim && hoverId != null)
       if (showLabel) {
-        const fontSize = 8 / k
+        const fontSize = 10.5 / k
         ctx.font = `${isAnchor ? 600 : 400} ${fontSize}px "Noto Sans SC", sans-serif`
         const tw = ctx.measureText(m.name).width
-        const padX = 3.5 / k + 2
-        const padY = 1.5 / k + 1
+        const padX = 4.5 / k + 2.5
+        const padY = 2 / k + 1.2
         const lx = n.x! - tw / 2 - padX
-        const ly = n.y! + r + 2
+        const ly = n.y! + r + 2.5
         ctx.fillStyle = dim ? 'rgba(7,11,18,0.35)' : 'rgba(7,11,18,0.78)'
         ctx.beginPath()
-        ctx.roundRect(lx, ly, tw + padX * 2, fontSize + padY * 2, 3 / k + 2)
+        ctx.roundRect(lx, ly, tw + padX * 2, fontSize + padY * 2, 4 / k + 2)
         ctx.fill()
         ctx.textAlign = 'center'
         ctx.textBaseline = 'top'
@@ -260,7 +260,7 @@ export default function GraphPage() {
       const n = node as GNode
       if (n.x == null || n.y == null || !isFinite(n.x) || !isFinite(n.y)) return
       const k = Math.max(globalScale, 0.08)
-      const r = 2 + Math.min(n.degree, 8) * 0.35 + 8 / k
+      const r = 2.8 + Math.min(n.degree, 8) * 0.5 + 8 / k
       ctx.fillStyle = color
       ctx.beginPath()
       ctx.arc(n.x, n.y, r, 0, Math.PI * 2)
